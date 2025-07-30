@@ -1,24 +1,29 @@
-torrentinfo
-===========
+# torrentinfo
 
-A torrent file parser
+A torrent file parser library and CLI utility.
 
 ## Usage
 
+By default,
+`torrentinfo` will print the information for all `.torrent` files directly in the working directory.
+An optional path to a directory or torrent file can be specified,
+with a recursive option to recursively find all torrent files.
+
 ```
-USAGE:
-    torrentinfo [OPTIONS] <filename>
+Usage: torrentinfo [OPTIONS] [PATH]
 
-OPTIONS:
-    -d, --details       Show detailed information about the torrent
-    -e, --everything    Print everything about the torrent
-    -f, --files         Show files within the torrent
-    -h, --help          Prints help information
-    -n, --nocolour      No Colours
-    -V, --version       Prints version information
+Arguments:
+  [PATH]  Optional input directory or file
 
-ARGS:
-    <filename>
+Options:
+  -d, --details     Show detailed information about the torrent
+  -e, --everything  Print everything about the torrent
+  -f, --files       Show files within the torrent
+  -n, --nocolour    Disable colour output
+  -r, --recursive   Recursive directory iteration
+  -v, --verbose     Verbose output
+  -h, --help        Print help
+  -V, --version     Print version
 ```
 
 ## Installation
