@@ -16,39 +16,21 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
-#[macro_use]
-extern crate clap;
-extern crate chrono;
-extern crate number_prefix;
-extern crate serde;
-extern crate serde_bencode;
-extern crate serde_bytes;
-extern crate torrentinfo;
-extern crate yansi;
-#[macro_use]
-extern crate lazy_static;
-
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
-use std::sync::LazyLock;
 
 use chrono::prelude::*;
 use clap::{App, AppSettings, Arg};
+use colored::Colorize;
 use number_prefix::{Prefixed, Standalone, binary_prefix};
 use serde_bencode::value::Value;
-use yansi::{Paint, Style};
 
 use torrentinfo::Torrent;
 
-const VERSION: &str = crate_version!();
-
-static S_NUMBER: LazyLock<Style> = LazyLock::new(Style::cyan);
-static S_BYTES: LazyLock<Style> = LazyLock::new(|| Style::red().bold());
-static S_LABEL: LazyLock<Style> = LazyLock::new(|| Style::new().dimmed().bold());
-static S_LABEL_ALT: LazyLock<Style> = LazyLock::new(Style::green);
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     let app = App::new("torrentinfo")
@@ -102,7 +84,7 @@ fn main() {
     let filename = matches.value_of("filename").unwrap();
 
     if matches.is_present("nocolour") {
-        Paint::disable();
+        colored::control::set_override(false);
     }
 
     let mut file = match File::open(filename) {
@@ -118,10 +100,7 @@ fn main() {
     let mut buf: Vec<u8> = vec![];
     file.read_to_end(&mut buf).unwrap();
 
-    println!(
-        "{}",
-        Paint::new(Path::new(filename).file_name().unwrap().to_str().unwrap()).bold()
-    );
+    println!("{}", Path::new(filename).file_name().unwrap().to_str().unwrap().bold());
 
     if show_everything {
         print_everything(&buf, indent);
@@ -156,7 +135,7 @@ fn main() {
                 Standalone(bytes) => format!("{bytes} bytes"),
                 Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
             };
-            print_line("total size", &S_NUMBER.paint(size), indent, &col_width);
+            print_line("total size", &size.cyan(), indent, &col_width);
             let info_hash_str = match torrent.info_hash() {
                 Ok(info_hash) => torrentinfo::to_hex(&info_hash),
                 Err(e) => format!("could not calculate info hash: {e}"),
@@ -166,7 +145,7 @@ fn main() {
         }
 
         if show_files || show_details {
-            println!("{}{}", indent, S_LABEL.paint("files"));
+            println!("{}{}", indent, "files".bold());
             let _files: Vec<torrentinfo::File>;
             let files = if let Some(f) = torrent.files() {
                 f
@@ -178,26 +157,26 @@ fn main() {
             };
 
             for (index, file) in files.iter().enumerate() {
-                println!("{}{}", indent.repeat(2), S_LABEL.paint(index));
+                println!("{}{}", indent.repeat(2), index.to_string().bold());
                 println!("{}{}", indent.repeat(3), file.path().join("/"));
                 let size = match binary_prefix(*file.length() as f64) {
                     Standalone(bytes) => format!("{bytes} bytes"),
                     Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
                 };
-                println!("{}{}", indent.repeat(3), S_NUMBER.paint(size));
+                println!("{}{}", indent.repeat(3), size.cyan());
             }
         }
 
         if show_details {
-            println!("{}{}", indent, S_LABEL.paint("piece length"));
+            println!("{}{}", indent, "piece length".bold());
             println!("{}{}", indent.repeat(2), &info.piece_length());
-            println!("{}{}", indent, S_LABEL.paint("pieces"));
+            println!("{}{}", indent, "pieces".bold());
             println!(
                 "{}{}",
                 indent.repeat(2),
-                S_BYTES.paint(format!("[{} Bytes]", info.pieces().len()))
+                format!("[{} Bytes]", info.pieces().len()).red().bold()
             );
-            println!("{}{}", indent, S_LABEL.paint("private"));
+            println!("{}{}", indent, "private".bold());
             println!("{}{}", indent.repeat(2), &info.private().unwrap_or_default());
         }
     }
@@ -205,7 +184,7 @@ fn main() {
 
 fn print_line<T: std::fmt::Display>(name: &str, value: &T, indent: &str, col_width: &u32) {
     let n = *col_width as usize - name.len();
-    println!("{}{} {}{}", indent, S_LABEL.paint(name), " ".repeat(n), value);
+    println!("{}{} {}{}", indent, name.bold(), " ".repeat(n), value);
 }
 
 fn print_everything(buf: &[u8], indent: &str) {
@@ -220,17 +199,13 @@ fn print_everything(buf: &[u8], indent: &str) {
 type Dict = HashMap<Vec<u8>, Value>;
 
 fn print_dict(dict: &Dict, indent: &str, depth: usize) {
-    let style = |key| {
-        if depth % 2 == 0 {
-            S_LABEL_ALT.paint(key)
-        } else {
-            S_LABEL.paint(key)
-        }
-    };
     for (k, v) in dict {
         let key = String::from_utf8_lossy(k);
-        println!("{}{}", indent.repeat(depth), style(key));
-
+        println!(
+            "{}{}",
+            indent.repeat(depth),
+            if depth % 2 == 0 { key.green() } else { key.bold() }
+        );
         match v {
             Value::Dict(d) => print_dict(d, indent, depth + 1),
             Value::List(l) => print_list(l, indent, depth + 1),
@@ -239,28 +214,29 @@ fn print_dict(dict: &Dict, indent: &str, depth: usize) {
                     println!(
                         "{}{}",
                         indent.repeat(depth + 1),
-                        S_BYTES.paint(format!("[{} Bytes]", b.len()))
+                        format!("[{} Bytes]", b.len()).red().bold()
                     );
                 } else {
                     println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
                 }
             }
-            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
+            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), i.to_string().cyan()),
         }
     }
 }
 
 fn print_list(list: &[Value], indent: &str, depth: usize) {
-    let style = |key| {
-        if depth % 2 == 0 {
-            S_LABEL_ALT.paint(key)
-        } else {
-            S_LABEL.paint(key)
-        }
-    };
-    for (k, v) in list.iter().enumerate() {
-        println!("{}{}", indent.repeat(depth), style(k));
-        match v {
+    for (key, value) in list.iter().enumerate() {
+        println!(
+            "{}{}",
+            indent.repeat(depth),
+            if depth % 2 == 0 {
+                key.to_string().green()
+            } else {
+                key.to_string().bold()
+            }
+        );
+        match value {
             Value::Dict(d) => print_dict(d, indent, depth + 1),
             Value::List(l) => print_list(l, indent, depth + 1),
             Value::Bytes(b) => {
@@ -268,13 +244,17 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
                     println!(
                         "{}{}",
                         indent.repeat(depth + 1),
-                        S_BYTES.paint(format!("[{} Bytes]", b.len()))
+                        format!("[{} Bytes]", b.len()).red().bold()
                     );
                 } else {
-                    println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
+                    println!(
+                        "{}{}",
+                        indent.repeat(depth + 1),
+                        std::str::from_utf8(b).unwrap_or("[invalid utf-8]")
+                    );
                 }
             }
-            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
+            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), i.to_string().cyan()),
         }
     }
 }
