@@ -76,7 +76,7 @@ fn main() -> Result<()> {
     let (root, files) = resolve_input_files(&input_path, args.recursive)?;
 
     if files.is_empty() {
-        anyhow::bail!("No torrent files found".yellow());
+        anyhow::bail!("No torrent files found");
     }
 
     let num_files = files.len();
@@ -90,7 +90,7 @@ fn main() -> Result<()> {
         println!(
             "{}",
             format!(
-                "{:>0width$} / {num_files}: {}",
+                "{:>0width$}/{num_files}: {}",
                 number + 1,
                 get_relative_path_or_filename(&file, &root),
                 width = digits
@@ -154,7 +154,15 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
 
         print_line("info hash", &info_hash_str, indent, col_width);
 
-        if args.files || args.details {
+        if args.details {
+            let piece_length_str = format!("[{} Bytes]", info.pieces().len()).red().bold();
+            print_line("piece length", &piece_length_str, indent, col_width);
+
+            let private_str = &info.private().unwrap_or_default().to_string();
+            print_line("private", private_str, indent, col_width);
+        }
+
+        if args.files {
             println!("{}{}", indent, "files".bold());
             let mut files_list: Vec<torrentinfo::File> = Vec::new();
             let files = torrent.files().as_ref().map_or_else(
@@ -180,34 +188,14 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
                     NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
                 };
                 println!(
-                    "{}{:>0width$}{}{}{}{}",
+                    "{}{:>0width$}{indent}{:>9}{indent}{}",
                     indent.repeat(2),
                     (index + 1).to_string().bold(),
-                    indent,
                     size.cyan(),
-                    indent,
                     file.path().join("/"),
                     width = digits
                 );
             }
-        }
-
-        if args.details {
-            println!("{}{}{}{}", indent, "piece length".bold(), indent, &info.piece_length());
-            println!(
-                "{}{}{}{}",
-                indent,
-                "pieces".bold(),
-                indent,
-                format!("[{} Bytes]", info.pieces().len()).red().bold()
-            );
-            println!(
-                "{}{}{}{}",
-                indent,
-                "private".bold(),
-                indent,
-                &info.private().unwrap_or_default()
-            );
         }
     }
     Ok(())
