@@ -26,7 +26,7 @@ use anyhow::{Context, Error, Result, anyhow};
 use chrono::prelude::*;
 use clap::{Parser, arg};
 use colored::Colorize;
-use number_prefix::{Prefixed, Standalone, binary_prefix};
+use number_prefix::NumberPrefix;
 use serde_bencode::value::Value;
 use torrentinfo::Torrent;
 use walkdir::WalkDir;
@@ -87,7 +87,7 @@ fn main() -> Result<()> {
     };
 
     for (number, file) in files.into_iter().enumerate() {
-        print!(
+        println!(
             "{}",
             format!(
                 "{:>0width$}: {}",
@@ -103,8 +103,6 @@ fn main() -> Result<()> {
 }
 
 fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
-    println!("{}", filepath.display());
-
     let indent = "    ";
     let col_width: u32 = 19;
     let mut buf: Vec<u8> = vec![];
@@ -143,9 +141,9 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
 
             let files = torrent.num_files();
             print_line("num files", &files, indent, col_width);
-            let size = match binary_prefix(torrent.total_size() as f64) {
-                Standalone(bytes) => format!("{bytes} bytes"),
-                Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
+            let size = match NumberPrefix::decimal(torrent.total_size() as f64) {
+                NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
+                NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
             };
             print_line("total size", &size.cyan(), indent, col_width);
             let info_hash_str = match torrent.info_hash() {
@@ -172,9 +170,9 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
             for (index, file) in files.iter().enumerate() {
                 println!("{}{}", indent.repeat(2), index.to_string().bold());
                 println!("{}{}", indent.repeat(3), file.path().join("/"));
-                let size = match binary_prefix(*file.length() as f64) {
-                    Standalone(bytes) => format!("{bytes} bytes"),
-                    Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
+                let size = match NumberPrefix::decimal(*file.length() as f64) {
+                    NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
+                    NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
                 };
                 println!("{}{}", indent.repeat(3), size.cyan());
             }
