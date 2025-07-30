@@ -16,8 +16,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-error_chain! {
-    foreign_links {
-        SerdeBencode(::serde_bencode::Error);
-    }
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Failed to decode bencode: {0}")]
+    Decode(#[from] serde_bencode::Error),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
+
+pub type Result<T> = std::result::Result<T, Error>;

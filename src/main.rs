@@ -22,72 +22,51 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::process;
 
+use anyhow::Result;
 use chrono::prelude::*;
-use clap::{App, AppSettings, Arg};
+use clap::{Parser, arg};
 use colored::Colorize;
 use number_prefix::{Prefixed, Standalone, binary_prefix};
 use serde_bencode::value::Value;
 
 use torrentinfo::Torrent;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+#[derive(Parser)]
+#[command(author, about, version)]
+#[allow(clippy::struct_excessive_bools)]
+struct Args {
+    /// Show files within the torrent
+    #[arg(
+        short = 'f',
+        long,
+        conflicts_with_all = ["details", "everything"]
+    )]
+    files: bool,
 
-fn main() {
-    let app = App::new("torrentinfo")
-        .version(VERSION)
-        .about("A torrent file parser")
-        .author("Daniel Müller <perlfuchsi@gmail.com>")
-        .global_setting(AppSettings::ArgRequiredElseHelp)
-        .global_setting(AppSettings::ColorAuto)
-        .global_setting(AppSettings::DontCollapseArgsInUsage)
-        .global_setting(AppSettings::UnifiedHelpMessage)
-        .arg(
-            Arg::with_name("files")
-                .short("f")
-                .long("files")
-                .help("Show files within the torrent")
-                .required(false)
-                .takes_value(false)
-                .conflicts_with_all(&["details", "everything"]),
-        )
-        .arg(
-            Arg::with_name("details")
-                .short("d")
-                .long("details")
-                .help("Show detailed information about the torrent")
-                .required(false)
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("everything")
-                .short("e")
-                .long("everything")
-                .help("Print everything about the torrent")
-                .required(false)
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("nocolour")
-                .short("n")
-                .long("nocolour")
-                .help("No Colours")
-                .required(false)
-                .takes_value(false),
-        )
-        .arg(Arg::with_name("filename").required(true).takes_value(true));
+    /// Show detailed information about the torrent
+    #[arg(short, long)]
+    details: bool,
 
-    let matches = app.get_matches();
+    /// Print everything about the torrent
+    #[arg(short, long)]
+    everything: bool,
 
-    let show_files = matches.is_present("files");
-    let show_details = matches.is_present("details");
-    let show_everything = matches.is_present("everything");
-    let filename = matches.value_of("filename").unwrap();
+    /// Disable colour output
+    #[arg(short, long = "nocolour")]
+    no_colour: bool,
 
-    if matches.is_present("nocolour") {
+    /// Torrent file to parse
+    filename: String,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    if args.no_colour {
         colored::control::set_override(false);
     }
 
-    let mut file = match File::open(filename) {
+    let mut file = match File::open(&args.filename) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("Application Error: {e}");
@@ -98,17 +77,20 @@ fn main() {
     let indent = "    ";
     let col_width: u32 = 19;
     let mut buf: Vec<u8> = vec![];
-    file.read_to_end(&mut buf).unwrap();
+    file.read_to_end(&mut buf)?;
 
-    println!("{}", Path::new(filename).file_name().unwrap().to_str().unwrap().bold());
+    println!(
+        "{}",
+        Path::new(&args.filename).file_name().unwrap().to_str().unwrap().bold()
+    );
 
-    if show_everything {
+    if args.everything {
         print_everything(&buf, indent);
     } else {
-        let torrent = Torrent::from_buf(&buf).unwrap();
+        let torrent = Torrent::from_buf(&buf)?;
         let info = torrent.info();
 
-        if !show_details {
+        if args.details {
             if let Some(v) = info.name() {
                 print_line("name", &v, indent, &col_width);
             }
@@ -144,7 +126,7 @@ fn main() {
             print_line("info hash", &info_hash_str, indent, &col_width);
         }
 
-        if show_files || show_details {
+        if args.files || args.details {
             println!("{}{}", indent, "files".bold());
             let _files: Vec<torrentinfo::File>;
             let files = if let Some(f) = torrent.files() {
@@ -167,7 +149,7 @@ fn main() {
             }
         }
 
-        if show_details {
+        if args.details {
             println!("{}{}", indent, "piece length".bold());
             println!("{}{}", indent.repeat(2), &info.piece_length());
             println!("{}{}", indent, "pieces".bold());
@@ -180,6 +162,7 @@ fn main() {
             println!("{}{}", indent.repeat(2), &info.private().unwrap_or_default());
         }
     }
+    Ok(())
 }
 
 fn print_line<T: std::fmt::Display>(name: &str, value: &T, indent: &str, col_width: &u32) {

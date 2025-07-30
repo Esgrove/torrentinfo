@@ -16,22 +16,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_bencode;
-extern crate serde_bytes;
-extern crate sha1;
-#[macro_use]
-extern crate error_chain;
+pub mod error;
 
-use serde_bencode::{de, ser};
+use serde_bencode::ser;
 use serde_bytes::ByteBuf;
+use serde_derive::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
-pub use crate::error::{Error, Result};
-
-pub mod error;
+use crate::error::Result;
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Torrent {
@@ -59,7 +51,7 @@ pub struct Torrent {
 
 impl Torrent {
     pub fn from_buf(buf: &[u8]) -> Result<Self> {
-        de::from_bytes(buf).map_err(std::convert::Into::into)
+        Ok(serde_bencode::from_bytes(buf)?)
     }
 
     #[must_use]
