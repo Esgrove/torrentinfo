@@ -166,7 +166,6 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
         }
 
         if args.files {
-            println!("{INDENT}{}", "files".bold());
             let mut files_list: Vec<torrentinfo::File> = Vec::new();
             let files = torrent.files().as_ref().map_or_else(
                 || {
@@ -178,21 +177,27 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
                 |f| f,
             );
 
-            let digits = digit_count(files.len());
+            if files.len() == 1 {
+                print_line("files", &files[0].path().join("/"));
+            } else {
+                println!("{INDENT}{}", "files".bold());
 
-            for (index, file) in files.iter().enumerate() {
-                let size = match NumberPrefix::decimal(*file.length() as f64) {
-                    NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
-                    NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
-                };
-                println!(
-                    "{}{:>0width$}{INDENT}{:>9}{INDENT}{}",
-                    INDENT.repeat(2),
-                    (index + 1).to_string().bold(),
-                    size.cyan(),
-                    file.path().join("/"),
-                    width = digits
-                );
+                let digits = digit_count(files.len());
+
+                for (index, file) in files.iter().enumerate() {
+                    let size = match NumberPrefix::decimal(*file.length() as f64) {
+                        NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
+                        NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
+                    };
+                    println!(
+                        "{}{:>0width$}{INDENT}{:>9}{INDENT}{}",
+                        INDENT.repeat(2),
+                        (index + 1).to_string().bold(),
+                        size.cyan(),
+                        file.path().join("/"),
+                        width = digits
+                    );
+                }
             }
         }
     }
