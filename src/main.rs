@@ -63,6 +63,10 @@ struct Args {
     /// Recursive directory iteration
     #[arg(short, long)]
     recursive: bool,
+
+    /// Verbose output
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 fn main() -> Result<()> {
@@ -73,7 +77,7 @@ fn main() -> Result<()> {
     }
 
     let input_path = resolve_input_path(args.path.as_deref())?;
-    let (root, files) = resolve_input_files(&input_path, args.recursive)?;
+    let (root, files) = resolve_input_files(&input_path, args.recursive, args.verbose)?;
 
     if files.is_empty() {
         anyhow::bail!("No torrent files found");
@@ -279,9 +283,11 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
 }
 
 /// Return file root and list of files from the input path that can be either a directory or single file.
-fn resolve_input_files(input: &PathBuf, recursive: bool) -> Result<(PathBuf, Vec<PathBuf>)> {
+fn resolve_input_files(input: &PathBuf, recursive: bool, verbose: bool) -> Result<(PathBuf, Vec<PathBuf>)> {
     if input.is_file() {
-        println!("{}", format!("Parsing file: {}", input.display()).bold().magenta());
+        if verbose {
+            println!("{}", format!("Reading file: {}", input.display()).bold().magenta());
+        }
         if input.extension() == Some(TORRENT_EXTENSION.as_ref()) {
             let parent = input.parent().context("Failed to get parent directory")?.to_path_buf();
             Ok((parent, vec![input.clone()]))
@@ -289,10 +295,12 @@ fn resolve_input_files(input: &PathBuf, recursive: bool) -> Result<(PathBuf, Vec
             Err(anyhow!("Input path is not an XML file: {}", input.display()))
         }
     } else {
-        println!(
-            "{}",
-            format!("Parsing files from: {}", input.display()).bold().magenta()
-        );
+        if verbose {
+            println!(
+                "{}",
+                format!("Reading files from: {}", input.display()).bold().magenta()
+            );
+        }
         Ok((input.clone(), get_torrent_files(input, recursive)))
     }
 }
@@ -390,7 +398,7 @@ pub fn get_relative_path_or_filename(full_path: &Path, root: &Path) -> String {
     )
 }
 
-/// Convert given path to string with invalid Unicode handling.
+/// Convert a path to string with invalid Unicode handling
 pub fn path_to_string(path: &Path) -> String {
     path.to_str().map_or_else(
         || path.to_string_lossy().to_string().replace('\u{FFFD}', ""),
