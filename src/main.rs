@@ -30,7 +30,7 @@ use serde_bencode::value::Value;
 use torrentinfo::Torrent;
 
 const BYTE_THRESHOLD: usize = 80;
-const COLUMN_WIDTH: u32 = 19;
+const COLUMN_WIDTH: usize = 19;
 const INDENT: &str = "    ";
 
 type Dict = HashMap<Vec<u8>, Value>;
@@ -228,7 +228,7 @@ fn print_file_header(current: usize, total: usize, file: &Path, root: &Path, wid
 
 /// Print a formatted line of data with indentation
 fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
-    let num_whitespace = COLUMN_WIDTH as usize - name.len();
+    let num_whitespace = COLUMN_WIDTH.saturating_sub(name.len());
     println!("{INDENT}{} {}{value}", name.bold(), " ".repeat(num_whitespace));
 }
 
