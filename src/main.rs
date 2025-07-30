@@ -102,18 +102,19 @@ fn main() -> Result<()> {
             )
             .bold()
         );
-        if let Err(e) = torrent_info(file, &args) {
+        if let Err(e) = torrent_info(file, args.details, args.everything, args.files) {
             eprintln!("{}", format!("Error: {e}").red());
         }
     }
     Ok(())
 }
 
-fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
+/// Print information for a single torrent file.
+fn torrent_info(filepath: PathBuf, print_details: bool, print_all: bool, print_files: bool) -> Result<(), Error> {
     let mut buf: Vec<u8> = vec![];
     File::open(filepath)?.read_to_end(&mut buf)?;
 
-    if args.everything {
+    if print_all {
         print_everything(&buf, INDENT);
     } else {
         let torrent = Torrent::from_buf(&buf)?;
@@ -157,7 +158,7 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
 
         print_line("info hash", &info_hash_str);
 
-        if args.details {
+        if print_details {
             let piece_length_str = format!("[{} Bytes]", info.pieces().len()).red().bold();
             print_line("piece length", &piece_length_str);
 
@@ -165,7 +166,7 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
             print_line("private", private_str);
         }
 
-        if args.files {
+        if print_files {
             let mut files_list: Vec<torrentinfo::File> = Vec::new();
             let files = torrent.files().as_ref().map_or_else(
                 || {
