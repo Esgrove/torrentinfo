@@ -18,6 +18,10 @@
 
 pub mod error;
 
+use std::fs::File as StdFile;
+use std::io::Read;
+use std::path::Path;
+
 use serde_bencode::ser;
 use serde_bencode::value::Value;
 use serde_bytes::ByteBuf;
@@ -86,6 +90,11 @@ pub struct File {
 }
 
 impl Torrent {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let buf = Self::read_bytes(path.as_ref())?;
+        Self::from_buf(&buf)
+    }
+
     pub fn from_buf(buf: &[u8]) -> Result<Self> {
         match serde_bencode::from_bytes(buf) {
             Ok(torrent) => Ok(torrent),
@@ -116,6 +125,17 @@ impl Torrent {
                 Err(e.into())
             }
         }
+    }
+
+    /// Read torrent file bytes without converting to a `Torrent`
+    pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
+        let file = StdFile::open(path)?;
+        let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(1024 * 1024);
+
+        let mut buf = Vec::with_capacity(file_size);
+        let mut reader = std::io::BufReader::new(file);
+        reader.read_to_end(&mut buf)?;
+        Ok(buf)
     }
 
     #[must_use]

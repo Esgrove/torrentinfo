@@ -18,8 +18,6 @@
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::fs::File;
-use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Error, Result, anyhow};
@@ -102,7 +100,7 @@ fn main() -> Result<()> {
             )
             .bold()
         );
-        if let Err(e) = torrent_info(file, args.details, args.everything, args.files) {
+        if let Err(e) = torrent_info(&file, args.details, args.everything, args.files) {
             eprintln!("{}", format!("Error: {e}").red());
         }
     }
@@ -110,14 +108,11 @@ fn main() -> Result<()> {
 }
 
 /// Print information for a single torrent file.
-fn torrent_info(filepath: PathBuf, print_details: bool, print_all: bool, print_files: bool) -> Result<(), Error> {
-    let mut buf: Vec<u8> = vec![];
-    File::open(filepath)?.read_to_end(&mut buf)?;
-
+fn torrent_info(filepath: &PathBuf, print_details: bool, print_all: bool, print_files: bool) -> Result<(), Error> {
     if print_all {
-        print_everything(&buf, INDENT);
+        print_everything(filepath, INDENT)?;
     } else {
-        let torrent = Torrent::from_buf(&buf)?;
+        let torrent = Torrent::from_file(filepath)?;
 
         if let Some(name) = torrent.name() {
             print_line("name", &name);
@@ -219,13 +214,15 @@ fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
     println!("{INDENT}{} {}{value}", name.bold(), " ".repeat(num_whitespace));
 }
 
-fn print_everything(buf: &[u8], indent: &str) {
-    let bencoded = serde_bencode::from_bytes(buf).expect("could not decode .torrent file");
+fn print_everything(filepath: &Path, indent: &str) -> Result<()> {
+    let bytes = Torrent::read_bytes(filepath)?;
+    let bencoded = serde_bencode::from_bytes(&bytes).context("could not decode .torrent file")?;
     if let Value::Dict(root) = bencoded {
         print_dict(&root, indent, 1);
     } else {
         println!("torrent file is not a dict");
     }
+    Ok(())
 }
 
 fn print_dict(dict: &Dict, indent: &str, depth: usize) {
