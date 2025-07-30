@@ -19,6 +19,7 @@
 pub mod error;
 
 use serde_bencode::ser;
+use serde_bencode::value::Value;
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -31,7 +32,7 @@ pub struct Torrent {
     announce: Option<String>,
     #[serde(default)]
     #[serde(rename = "announce-list")]
-    announce_list: Option<Vec<String>>,
+    announce_list: Option<Vec<Vec<String>>>,
     #[serde(rename = "comment")]
     comment: Option<String>,
     #[serde(default)]
@@ -51,7 +52,35 @@ pub struct Torrent {
 
 impl Torrent {
     pub fn from_buf(buf: &[u8]) -> Result<Self> {
-        Ok(serde_bencode::from_bytes(buf)?)
+        match serde_bencode::from_bytes(buf) {
+            Ok(torrent) => Ok(torrent),
+            Err(e) => {
+                if let Ok(Value::Dict(dict)) = serde_bencode::from_bytes::<Value>(buf) {
+                    eprintln!("Bencode decode error. Torrent structure:");
+                    for (key, value) in &dict {
+                        let key_str = String::from_utf8_lossy(key);
+                        match value {
+                            Value::List(list) => {
+                                eprintln!("  {}: List with {} elements", key_str, list.len());
+                                if key_str == "announce-list" {
+                                    eprintln!("    announce-list structure issue detected");
+                                }
+                            }
+                            Value::Bytes(bytes) => {
+                                eprintln!("  {key_str}: Bytes ({} bytes)", bytes.len());
+                            }
+                            Value::Int(i) => {
+                                eprintln!("  {key_str}: Integer ({i})");
+                            }
+                            Value::Dict(_) => {
+                                eprintln!("  {key_str}: Dictionary");
+                            }
+                        }
+                    }
+                }
+                Err(e.into())
+            }
+        }
     }
 
     #[must_use]
@@ -106,7 +135,7 @@ impl Torrent {
     }
 
     #[must_use]
-    pub const fn announce_list(&self) -> &Option<Vec<String>> {
+    pub const fn announce_list(&self) -> &Option<Vec<Vec<String>>> {
         &self.announce_list
     }
 

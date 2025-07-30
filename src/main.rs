@@ -97,7 +97,9 @@ fn main() -> Result<()> {
             )
             .bold()
         );
-        torrent_info(file, &args)?;
+        if let Err(e) = torrent_info(file, &args) {
+            eprintln!("{}", format!("Error: {e}").red());
+        }
     }
     Ok(())
 }
