@@ -28,8 +28,9 @@ use clap::{Parser, arg};
 use colored::Colorize;
 use number_prefix::NumberPrefix;
 use serde_bencode::value::Value;
-use torrentinfo::Torrent;
 use walkdir::WalkDir;
+
+use torrentinfo::Torrent;
 
 const COLUMN_WIDTH: u32 = 19;
 const INDENT: &str = "    ";
