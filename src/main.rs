@@ -90,7 +90,7 @@ fn main() -> Result<()> {
         println!(
             "{}",
             format!(
-                "{:>0width$}: {}",
+                "{:>0width$} / {num_files}: {}",
                 number + 1,
                 get_relative_path_or_filename(&file, &root),
                 width = digits
@@ -114,45 +114,43 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
         let torrent = Torrent::from_buf(&buf)?;
         let info = torrent.info();
 
-        if args.details {
-            if let Some(v) = info.name() {
-                print_line("name", &v, indent, col_width);
-            }
-            if let Some(v) = &torrent.comment() {
-                print_line("comment", &v, indent, col_width);
-            }
-            if let Some(v) = &torrent.announce() {
-                print_line("announce url", &v, indent, col_width);
-            }
-            if let Some(v) = &torrent.created_by() {
-                print_line("created by", &v, indent, col_width);
-            }
-            if let Some(v) = &torrent.creation_date() {
-                let date_str = Utc
-                    .timestamp_opt(*v, 0)
-                    .single()
-                    .map(|d| d.to_string())
-                    .unwrap_or_default();
-                print_line("created on", &date_str, indent, col_width);
-            }
-            if let Some(v) = &torrent.encoding() {
-                print_line("encoding", &v, indent, col_width);
-            }
-
-            let files = torrent.num_files();
-            print_line("num files", &files, indent, col_width);
-            let size = match NumberPrefix::decimal(torrent.total_size() as f64) {
-                NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
-                NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
-            };
-            print_line("total size", &size.cyan(), indent, col_width);
-            let info_hash_str = match torrent.info_hash() {
-                Ok(info_hash) => torrentinfo::to_hex(&info_hash),
-                Err(e) => format!("could not calculate info hash: {e}"),
-            };
-
-            print_line("info hash", &info_hash_str, indent, col_width);
+        if let Some(v) = info.name() {
+            print_line("name", &v, indent, col_width);
         }
+        if let Some(v) = &torrent.comment() {
+            print_line("comment", &v, indent, col_width);
+        }
+        if let Some(v) = &torrent.announce() {
+            print_line("announce url", &v, indent, col_width);
+        }
+        if let Some(v) = &torrent.created_by() {
+            print_line("created by", &v, indent, col_width);
+        }
+        if let Some(v) = &torrent.creation_date() {
+            let date_str = Utc
+                .timestamp_opt(*v, 0)
+                .single()
+                .map(|d| d.to_string())
+                .unwrap_or_default();
+            print_line("created on", &date_str, indent, col_width);
+        }
+        if let Some(v) = &torrent.encoding() {
+            print_line("encoding", &v, indent, col_width);
+        }
+
+        let files = torrent.num_files();
+        print_line("num files", &files, indent, col_width);
+        let size = match NumberPrefix::decimal(torrent.total_size() as f64) {
+            NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
+            NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
+        };
+        print_line("total size", &size.cyan(), indent, col_width);
+        let info_hash_str = match torrent.info_hash() {
+            Ok(info_hash) => torrentinfo::to_hex(&info_hash),
+            Err(e) => format!("could not calculate info hash: {e}"),
+        };
+
+        print_line("info hash", &info_hash_str, indent, col_width);
 
         if args.files || args.details {
             println!("{}{}", indent, "files".bold());
