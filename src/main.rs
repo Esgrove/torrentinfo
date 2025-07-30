@@ -16,23 +16,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
+mod utils;
+
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Error, Result, anyhow};
-use chrono::prelude::*;
+use anyhow::{Context, Result};
 use clap::{Parser, arg};
 use colored::Colorize;
 use number_prefix::NumberPrefix;
 use serde_bencode::value::Value;
-use walkdir::WalkDir;
 
 use torrentinfo::Torrent;
 
+const BYTE_THRESHOLD: usize = 80;
 const COLUMN_WIDTH: u32 = 19;
 const INDENT: &str = "    ";
-const TORRENT_EXTENSION: &str = "torrent";
 
 type Dict = HashMap<Vec<u8>, Value>;
 
@@ -79,101 +78,105 @@ fn main() -> Result<()> {
         colored::control::set_override(false);
     }
 
-    let input_path = resolve_input_path(args.path.as_deref())?;
-    let (root, files) = resolve_input_files(&input_path, args.recursive, args.verbose)?;
+    let input_path = utils::resolve_input_path(args.path.as_deref())?;
+    let (root, files) = utils::get_torrent_files(&input_path, args.recursive, args.verbose)?;
 
     if files.is_empty() {
         anyhow::bail!("No torrent files found");
     }
 
+    print_torrent_files(files, &root, &args);
+    Ok(())
+}
+
+/// Process all torrent files and print their information
+fn print_torrent_files(files: Vec<PathBuf>, root: &Path, args: &Args) {
     let num_files = files.len();
-    let digits = digit_count(num_files);
+    let digits = utils::digit_count(num_files);
 
     for (number, file) in files.into_iter().enumerate() {
-        println!(
-            "{}",
-            format!(
-                "{:>0width$}/{num_files}: {}",
-                number + 1,
-                get_relative_path_or_filename(&file, &root),
-                width = digits
-            )
-            .bold()
-        );
-        if let Err(e) = torrent_info(&file, args.details, args.everything, args.files) {
+        print_file_header(number + 1, num_files, &file, root, digits);
+        if let Err(e) = print_single_torrent(&file, args) {
             eprintln!("{}", format!("Error: {e}").red());
         }
     }
+}
+
+/// Print information for a single torrent file
+fn print_single_torrent(filepath: &Path, args: &Args) -> Result<()> {
+    if args.everything {
+        print_raw_data(filepath, INDENT)
+    } else {
+        print_torrent_info(filepath, args)
+    }
+}
+
+/// Print information for a single torrent file
+fn print_torrent_info(filepath: &Path, args: &Args) -> Result<()> {
+    let torrent = Torrent::from_file(filepath)?;
+
+    print_info(&torrent);
+    if args.details {
+        print_extra_info(&torrent);
+    }
+    if args.files {
+        print_files(&torrent);
+    }
+
     Ok(())
 }
 
-/// Print information for a single torrent file.
-fn torrent_info(filepath: &PathBuf, print_details: bool, print_all: bool, print_files: bool) -> Result<(), Error> {
-    if print_all {
-        print_everything(filepath, INDENT)?;
-    } else {
-        let torrent = Torrent::from_file(filepath)?;
-
-        if let Some(name) = torrent.name() {
-            print_line("name", &name);
-        }
-        if let Some(comment) = &torrent.comment() {
-            print_line("comment", &comment);
-        }
-        if let Some(announce_url) = &torrent.announce() {
-            print_line("announce url", &announce_url);
-        }
-        if let Some(created_by) = &torrent.created_by() {
-            print_line("created by", &created_by);
-        }
-        if let Some(creation_date) = &torrent.creation_date() {
-            let date_str = Utc
-                .timestamp_opt(*creation_date, 0)
-                .single()
-                .map(|d| d.to_string())
-                .unwrap_or_default();
-            print_line("created on", &date_str);
-        }
-        if let Some(encoding) = &torrent.encoding() {
-            print_line("encoding", &encoding);
-        }
-
-        let files = torrent.num_files();
-        print_line("num files", &files);
-        let size = match NumberPrefix::decimal(torrent.total_size() as f64) {
-            NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
-            NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
-        };
-        print_line("total size", &size.cyan());
-        let info_hash_str = match torrent.info_hash() {
-            Ok(info_hash) => torrentinfo::to_hex(&info_hash),
-            Err(e) => format!("could not calculate info hash: {e}"),
-        };
-
-        print_line("info hash", &info_hash_str);
-
-        if print_details {
-            let piece_length_str = format!("[{} Bytes]", torrent.info.pieces().len()).red().bold();
-            print_line("piece length", &piece_length_str);
-
-            if let Some(path) = &torrent.info.path {
-                print_line("path", &format!("{path:#?}").cyan());
-            }
-
-            if let Some(private) = torrent.info.private() {
-                print_line("private", private);
-            }
-        }
-
-        if print_files {
-            print_files_for_torrent(&torrent);
-        }
+/// Print basic torrent information
+fn print_info(torrent: &Torrent) {
+    if let Some(name) = torrent.name() {
+        print_line("name", &name);
     }
-    Ok(())
+    if let Some(comment) = &torrent.comment() {
+        print_line("comment", &comment);
+    }
+    if let Some(announce_url) = &torrent.announce() {
+        print_line("announce url", &announce_url);
+    }
+    if let Some(created_by) = &torrent.created_by() {
+        print_line("created by", &created_by);
+    }
+    if let Some(creation_date) = torrent.creation_date() {
+        let date_str = utils::format_creation_date(*creation_date);
+        print_line("created on", &date_str);
+    }
+    if let Some(encoding) = &torrent.encoding() {
+        print_line("encoding", &encoding);
+    }
+
+    let files = torrent.num_files();
+    print_line("num files", &files);
+
+    let size_str = utils::format_file_size(torrent.total_size() as f64);
+    print_line("total size", &size_str.cyan());
+
+    let info_hash_str = match torrent.info_hash() {
+        Ok(info_hash) => torrentinfo::to_hex(&info_hash),
+        Err(e) => format!("Could not calculate info hash: {e}"),
+    };
+    print_line("info hash", &info_hash_str);
+}
+
+/// Print detailed torrent information
+fn print_extra_info(torrent: &Torrent) {
+    let piece_length_str = format!("[{} Bytes]", torrent.info.pieces().len()).red().bold();
+    print_line("piece length", &piece_length_str);
+
+    if let Some(path) = &torrent.info.path {
+        print_line("path", &format!("{path:#?}").cyan());
+    }
+
+    if let Some(private) = torrent.info.private() {
+        print_line("private", private);
+    }
 }
 
 /// Print a list of all the files in the torrent.
-fn print_files_for_torrent(torrent: &Torrent) {
+fn print_files(torrent: &Torrent) {
     let mut files_list: Vec<torrentinfo::File> = Vec::new();
     let files = torrent.files().as_ref().map_or_else(
         || {
@@ -190,10 +193,10 @@ fn print_files_for_torrent(torrent: &Torrent) {
     } else {
         println!("{INDENT}{}", "files".bold());
 
-        let digits = digit_count(files.len());
+        let digits = utils::digit_count(files.len());
 
         for (index, file) in files.iter().enumerate() {
-            let size = match NumberPrefix::decimal(*file.length() as f64) {
+            let size = match NumberPrefix::decimal(file.length() as f64) {
                 NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
                 NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
             };
@@ -209,12 +212,28 @@ fn print_files_for_torrent(torrent: &Torrent) {
     }
 }
 
+/// Print the file header with numbering
+fn print_file_header(current: usize, total: usize, file: &Path, root: &Path, width: usize) {
+    println!(
+        "{}",
+        format!(
+            "{:>0width$}/{total}: {}",
+            current,
+            utils::get_relative_path_or_filename(file, root),
+            width = width
+        )
+        .bold()
+    );
+}
+
+/// Print a formatted line of data with indentation
 fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
     let num_whitespace = COLUMN_WIDTH as usize - name.len();
     println!("{INDENT}{} {}{value}", name.bold(), " ".repeat(num_whitespace));
 }
 
-fn print_everything(filepath: &Path, indent: &str) -> Result<()> {
+/// Print all data in the torrent file without trying to parse it into a `Torrent`
+fn print_raw_data(filepath: &Path, indent: &str) -> Result<()> {
     let bytes = Torrent::read_bytes(filepath)?;
     let bencoded = serde_bencode::from_bytes(&bytes).context("could not decode .torrent file")?;
     if let Value::Dict(root) = bencoded {
@@ -225,33 +244,30 @@ fn print_everything(filepath: &Path, indent: &str) -> Result<()> {
     Ok(())
 }
 
+/// Print a single bencode value
+fn print_value(value: &Value, indent: &str, depth: usize) {
+    match value {
+        Value::Dict(d) => print_dict(d, indent, depth),
+        Value::List(l) => print_list(l, indent, depth),
+        Value::Bytes(b) => print_bytes(b, indent, depth),
+        Value::Int(i) => println!("{}{}", indent.repeat(depth), i.to_string().cyan()),
+    }
+}
+
+/// Print dictionary values recursively
 fn print_dict(dict: &Dict, indent: &str, depth: usize) {
-    for (k, v) in dict {
-        let key = String::from_utf8_lossy(k);
+    for (key, value) in dict {
+        let key = String::from_utf8_lossy(key);
         println!(
             "{}{}",
             indent.repeat(depth),
             if depth % 2 == 0 { key.green() } else { key.bold() }
         );
-        match v {
-            Value::Dict(d) => print_dict(d, indent, depth + 1),
-            Value::List(l) => print_list(l, indent, depth + 1),
-            Value::Bytes(b) => {
-                if b.len() > 80 {
-                    println!(
-                        "{}{}",
-                        indent.repeat(depth + 1),
-                        format!("[{} Bytes]", b.len()).red().bold()
-                    );
-                } else {
-                    println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
-                }
-            }
-            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), i.to_string().cyan()),
-        }
+        print_value(value, indent, depth + 1);
     }
 }
 
+/// Print list values recursively
 fn print_list(list: &[Value], indent: &str, depth: usize) {
     for (key, value) in list.iter().enumerate() {
         println!(
@@ -263,180 +279,20 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
                 key.to_string().bold()
             }
         );
-        match value {
-            Value::Dict(d) => print_dict(d, indent, depth + 1),
-            Value::List(l) => print_list(l, indent, depth + 1),
-            Value::Bytes(b) => {
-                if b.len() > 80 {
-                    println!(
-                        "{}{}",
-                        indent.repeat(depth + 1),
-                        format!("[{} Bytes]", b.len()).red().bold()
-                    );
-                } else {
-                    println!(
-                        "{}{}",
-                        indent.repeat(depth + 1),
-                        std::str::from_utf8(b).unwrap_or("[invalid utf-8]")
-                    );
-                }
-            }
-            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), i.to_string().cyan()),
-        }
+        print_value(value, indent, depth + 1);
     }
 }
 
-/// Return file root and list of files from the input path that can be either a directory or single file.
-fn resolve_input_files(input: &PathBuf, recursive: bool, verbose: bool) -> Result<(PathBuf, Vec<PathBuf>)> {
-    if input.is_file() {
-        if verbose {
-            println!("{}", format!("Reading file: {}", input.display()).bold().magenta());
-        }
-        if input.extension() == Some(TORRENT_EXTENSION.as_ref()) {
-            let parent = input.parent().context("Failed to get parent directory")?.to_path_buf();
-            Ok((parent, vec![input.clone()]))
-        } else {
-            Err(anyhow!("Input path is not an XML file: {}", input.display()))
-        }
-    } else {
-        if verbose {
-            println!(
-                "{}",
-                format!("Reading files from: {}", input.display()).bold().magenta()
-            );
-        }
-        Ok((input.clone(), get_all_torrent_files(input, recursive)))
-    }
-}
-
-/// Collect all torrent files from the given root path and sort by name.
-fn get_all_torrent_files<P: AsRef<Path>>(root: P, recursive: bool) -> Vec<PathBuf> {
-    let extension = OsStr::new(TORRENT_EXTENSION);
-    let max_depth = if recursive { 999 } else { 1 };
-    let mut files: Vec<PathBuf> = WalkDir::new(root)
-        .max_depth(max_depth)
-        .into_iter()
-        .filter_entry(|e| !is_hidden(e))
-        .filter_map(std::result::Result::ok)
-        .map(|e| e.path().to_owned())
-        .filter(|path| path.is_file() && path.extension() == Some(extension))
-        .collect();
-
-    files.sort_unstable_by(|a, b| {
-        let a_str = a.to_string_lossy().to_lowercase();
-        let b_str = b.to_string_lossy().to_lowercase();
-        a_str.cmp(&b_str)
-    });
-    files
-}
-
-/// Resolves the provided input path to a directory or file to an absolute path.
-///
-/// If `path` is `None` or an empty string, the current working directory is used.
-/// The function verifies that the provided path exists and is accessible,
-/// returning an error if it does not.
-///
-/// ```rust
-/// use std::path::PathBuf;
-/// use cli_tools::resolve_input_path;
-///
-/// let path = Some("src");
-/// let absolute_path = resolve_input_path(path).unwrap();
-/// ```
-pub fn resolve_input_path(path: Option<&str>) -> Result<PathBuf> {
-    let input_path = path.unwrap_or_default().trim().to_string();
-    let filepath = if input_path.is_empty() {
-        std::env::current_dir().context("Failed to get current working directory")?
-    } else {
-        PathBuf::from(input_path)
-    };
-    if !filepath.exists() {
-        anyhow::bail!(
-            "Input path does not exist or is not accessible: '{}'",
-            filepath.display()
+/// Print byte values with appropriate formatting
+fn print_bytes(bytes: &[u8], indent: &str, depth: usize) {
+    if bytes.len() > BYTE_THRESHOLD {
+        println!(
+            "{}{}",
+            indent.repeat(depth),
+            format!("[{} Bytes]", bytes.len()).red().bold()
         );
-    }
-
-    // Dunce crate is used for nicer paths on Windows
-    let absolute_input_path = dunce::canonicalize(&filepath)?;
-
-    // Canonicalize fails for network drives on Windows :(
-    if path_to_string(&absolute_input_path).starts_with(r"\\?") && !path_to_string(&filepath).starts_with(r"\\?") {
-        Ok(filepath)
     } else {
-        Ok(absolute_input_path)
-    }
-}
-
-/// Gets the relative path or filename from a full path based on a root directory.
-///
-/// If the full path is within the root directory, the function returns the relative path.
-/// Otherwise, it returns just the filename. If the filename cannot be determined, the
-/// full path is returned.
-///
-/// ```rust
-/// use std::path::Path;
-/// use cli_tools::get_relative_path_or_filename;
-///
-/// let root = Path::new("/root/dir");
-/// let full_path = root.join("subdir/file.txt");
-/// let relative_path = get_relative_path_or_filename(&full_path, root);
-/// assert_eq!(relative_path, "subdir/file.txt");
-///
-/// let outside_path = Path::new("/root/dir/another.txt");
-/// let relative_or_filename = get_relative_path_or_filename(&outside_path, root);
-/// assert_eq!(relative_or_filename, "another.txt");
-/// ```
-#[must_use]
-pub fn get_relative_path_or_filename(full_path: &Path, root: &Path) -> String {
-    if full_path == root {
-        return full_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string()
-            .replace('\u{FFFD}', "");
-    }
-    full_path.strip_prefix(root).map_or_else(
-        |_| {
-            full_path.file_name().map_or_else(
-                || full_path.display().to_string(),
-                |name| name.to_string_lossy().to_string().replace('\u{FFFD}', ""),
-            )
-        },
-        |relative_path| relative_path.display().to_string(),
-    )
-}
-
-/// Convert a path to string with invalid Unicode handling
-pub fn path_to_string(path: &Path) -> String {
-    path.to_str().map_or_else(
-        || path.to_string_lossy().to_string().replace('\u{FFFD}', ""),
-        std::string::ToString::to_string,
-    )
-}
-
-/// Check if entry is a hidden file or directory (starts with '.')
-#[must_use]
-pub fn is_hidden(entry: &walkdir::DirEntry) -> bool {
-    entry.file_name().to_str().is_some_and(|s| s.starts_with('.'))
-}
-
-/// Count the number of digits in a number.
-///
-/// Used for getting the width required to print numbers.
-///
-/// Example input -> output return values:
-/// ```not_rust
-/// 0-9:     1
-/// 10-99:   2
-/// 100-999: 3
-/// ```
-#[must_use]
-fn digit_count(number: usize) -> usize {
-    if number < 10 {
-        1
-    } else {
-        ((number as f64).log10() as usize) + 1
+        let content = std::str::from_utf8(bytes).unwrap_or("[invalid utf-8]");
+        println!("{}{content}", indent.repeat(depth));
     }
 }
