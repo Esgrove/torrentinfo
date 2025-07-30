@@ -37,7 +37,7 @@ use std::sync::LazyLock;
 
 use chrono::prelude::*;
 use clap::{App, AppSettings, Arg};
-use number_prefix::{binary_prefix, Prefixed, Standalone};
+use number_prefix::{Prefixed, Standalone, binary_prefix};
 use serde_bencode::value::Value;
 use yansi::{Paint, Style};
 
@@ -130,23 +130,23 @@ fn main() {
         let info = torrent.info();
 
         if !show_details {
-            if let Some(ref v) = info.name() {
+            if let Some(v) = info.name() {
                 print_line("name", &v, indent, &col_width);
             }
-            if let Some(ref v) = &torrent.comment() {
+            if let Some(v) = &torrent.comment() {
                 print_line("comment", &v, indent, &col_width);
             }
-            if let Some(ref v) = &torrent.announce() {
+            if let Some(v) = &torrent.announce() {
                 print_line("announce url", &v, indent, &col_width);
             }
-            if let Some(ref v) = &torrent.created_by() {
+            if let Some(v) = &torrent.created_by() {
                 print_line("created by", &v, indent, &col_width);
             }
-            if let Some(ref v) = &torrent.creation_date() {
+            if let Some(v) = &torrent.creation_date() {
                 let date = Utc.timestamp(*v, 0);
                 print_line("created on", &date, indent, &col_width);
             }
-            if let Some(ref v) = &torrent.encoding() {
+            if let Some(v) = &torrent.encoding() {
                 print_line("encoding", &v, indent, &col_width);
             }
 
@@ -232,9 +232,9 @@ fn print_dict(dict: &Dict, indent: &str, depth: usize) {
         println!("{}{}", indent.repeat(depth), style(key));
 
         match v {
-            Value::Dict(ref d) => print_dict(d, indent, depth + 1),
-            Value::List(ref l) => print_list(l, indent, depth + 1),
-            Value::Bytes(ref b) => {
+            Value::Dict(d) => print_dict(d, indent, depth + 1),
+            Value::List(l) => print_list(l, indent, depth + 1),
+            Value::Bytes(b) => {
                 if b.len() > 80 {
                     println!(
                         "{}{}",
@@ -245,7 +245,7 @@ fn print_dict(dict: &Dict, indent: &str, depth: usize) {
                     println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
                 }
             }
-            Value::Int(ref i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
+            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
         }
     }
 }
@@ -261,9 +261,9 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
     for (k, v) in list.iter().enumerate() {
         println!("{}{}", indent.repeat(depth), style(k));
         match v {
-            Value::Dict(ref d) => print_dict(d, indent, depth + 1),
-            Value::List(ref l) => print_list(l, indent, depth + 1),
-            Value::Bytes(ref b) => {
+            Value::Dict(d) => print_dict(d, indent, depth + 1),
+            Value::List(l) => print_list(l, indent, depth + 1),
+            Value::Bytes(b) => {
                 if b.len() > 80 {
                     println!(
                         "{}{}",
@@ -274,7 +274,7 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
                     println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
                 }
             }
-            Value::Int(ref i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
+            Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
         }
     }
 }
