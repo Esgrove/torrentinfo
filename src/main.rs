@@ -31,7 +31,11 @@ use serde_bencode::value::Value;
 use torrentinfo::Torrent;
 use walkdir::WalkDir;
 
+const COLUMN_WIDTH: u32 = 19;
+const INDENT: &str = "    ";
 const TORRENT_EXTENSION: &str = "torrent";
+
+type Dict = HashMap<Vec<u8>, Value>;
 
 #[derive(Parser)]
 #[command(author, about, version)]
@@ -84,11 +88,7 @@ fn main() -> Result<()> {
     }
 
     let num_files = files.len();
-    let digits = if num_files < 10 {
-        1
-    } else {
-        ((num_files as f64).log10() as usize) + 1
-    };
+    let digits = digit_count(num_files);
 
     for (number, file) in files.into_iter().enumerate() {
         println!(
@@ -109,28 +109,26 @@ fn main() -> Result<()> {
 }
 
 fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
-    let indent = "    ";
-    let col_width: u32 = 19;
     let mut buf: Vec<u8> = vec![];
     File::open(filepath)?.read_to_end(&mut buf)?;
 
     if args.everything {
-        print_everything(&buf, indent);
+        print_everything(&buf, INDENT);
     } else {
         let torrent = Torrent::from_buf(&buf)?;
         let info = torrent.info();
 
         if let Some(v) = info.name() {
-            print_line("name", &v, indent, col_width);
+            print_line("name", &v);
         }
         if let Some(v) = &torrent.comment() {
-            print_line("comment", &v, indent, col_width);
+            print_line("comment", &v);
         }
         if let Some(v) = &torrent.announce() {
-            print_line("announce url", &v, indent, col_width);
+            print_line("announce url", &v);
         }
         if let Some(v) = &torrent.created_by() {
-            print_line("created by", &v, indent, col_width);
+            print_line("created by", &v);
         }
         if let Some(v) = &torrent.creation_date() {
             let date_str = Utc
@@ -138,36 +136,36 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
                 .single()
                 .map(|d| d.to_string())
                 .unwrap_or_default();
-            print_line("created on", &date_str, indent, col_width);
+            print_line("created on", &date_str);
         }
         if let Some(v) = &torrent.encoding() {
-            print_line("encoding", &v, indent, col_width);
+            print_line("encoding", &v);
         }
 
         let files = torrent.num_files();
-        print_line("num files", &files, indent, col_width);
+        print_line("num files", &files);
         let size = match NumberPrefix::decimal(torrent.total_size() as f64) {
             NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
             NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
         };
-        print_line("total size", &size.cyan(), indent, col_width);
+        print_line("total size", &size.cyan());
         let info_hash_str = match torrent.info_hash() {
             Ok(info_hash) => torrentinfo::to_hex(&info_hash),
             Err(e) => format!("could not calculate info hash: {e}"),
         };
 
-        print_line("info hash", &info_hash_str, indent, col_width);
+        print_line("info hash", &info_hash_str);
 
         if args.details {
             let piece_length_str = format!("[{} Bytes]", info.pieces().len()).red().bold();
-            print_line("piece length", &piece_length_str, indent, col_width);
+            print_line("piece length", &piece_length_str);
 
             let private_str = &info.private().unwrap_or_default().to_string();
-            print_line("private", private_str, indent, col_width);
+            print_line("private", private_str);
         }
 
         if args.files {
-            println!("{}{}", indent, "files".bold());
+            println!("{INDENT}{}", "files".bold());
             let mut files_list: Vec<torrentinfo::File> = Vec::new();
             let files = torrent.files().as_ref().map_or_else(
                 || {
@@ -179,12 +177,7 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
                 |f| f,
             );
 
-            let num_files = files.len();
-            let digits = if num_files < 10 {
-                1
-            } else {
-                ((num_files as f64).log10() as usize) + 1
-            };
+            let digits = digit_count(files.len());
 
             for (index, file) in files.iter().enumerate() {
                 let size = match NumberPrefix::decimal(*file.length() as f64) {
@@ -192,8 +185,8 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
                     NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
                 };
                 println!(
-                    "{}{:>0width$}{indent}{:>9}{indent}{}",
-                    indent.repeat(2),
+                    "{}{:>0width$}{INDENT}{:>9}{INDENT}{}",
+                    INDENT.repeat(2),
                     (index + 1).to_string().bold(),
                     size.cyan(),
                     file.path().join("/"),
@@ -205,9 +198,9 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn print_line<T: std::fmt::Display>(name: &str, value: &T, indent: &str, col_width: u32) {
-    let n = col_width as usize - name.len();
-    println!("{}{} {}{}", indent, name.bold(), " ".repeat(n), value);
+fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
+    let num_whitespace = COLUMN_WIDTH as usize - name.len();
+    println!("{INDENT}{} {}{value}", name.bold(), " ".repeat(num_whitespace));
 }
 
 fn print_everything(buf: &[u8], indent: &str) {
@@ -218,8 +211,6 @@ fn print_everything(buf: &[u8], indent: &str) {
         println!("torrent file is not a dict");
     }
 }
-
-type Dict = HashMap<Vec<u8>, Value>;
 
 fn print_dict(dict: &Dict, indent: &str, depth: usize) {
     for (k, v) in dict {
@@ -301,12 +292,12 @@ fn resolve_input_files(input: &PathBuf, recursive: bool, verbose: bool) -> Resul
                 format!("Reading files from: {}", input.display()).bold().magenta()
             );
         }
-        Ok((input.clone(), get_torrent_files(input, recursive)))
+        Ok((input.clone(), get_all_torrent_files(input, recursive)))
     }
 }
 
-/// Collect all torrent files recursively from the given root path.
-fn get_torrent_files<P: AsRef<Path>>(root: P, recursive: bool) -> Vec<PathBuf> {
+/// Collect all torrent files from the given root path and sort by name.
+fn get_all_torrent_files<P: AsRef<Path>>(root: P, recursive: bool) -> Vec<PathBuf> {
     let extension = OsStr::new(TORRENT_EXTENSION);
     let max_depth = if recursive { 999 } else { 1 };
     let mut files: Vec<PathBuf> = WalkDir::new(root)
@@ -318,7 +309,7 @@ fn get_torrent_files<P: AsRef<Path>>(root: P, recursive: bool) -> Vec<PathBuf> {
         .filter(|path| path.is_file() && path.extension() == Some(extension))
         .collect();
 
-    files.sort_by(|a, b| {
+    files.sort_unstable_by(|a, b| {
         let a_str = a.to_string_lossy().to_lowercase();
         let b_str = b.to_string_lossy().to_lowercase();
         a_str.cmp(&b_str)
@@ -353,6 +344,7 @@ pub fn resolve_input_path(path: Option<&str>) -> Result<PathBuf> {
         );
     }
 
+    // Dunce crate is used for nicer paths on Windows
     let absolute_input_path = dunce::canonicalize(&filepath)?;
 
     // Canonicalize fails for network drives on Windows :(
@@ -385,13 +377,18 @@ pub fn resolve_input_path(path: Option<&str>) -> Result<PathBuf> {
 #[must_use]
 pub fn get_relative_path_or_filename(full_path: &Path, root: &Path) -> String {
     if full_path == root {
-        return full_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        return full_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+            .replace('\u{FFFD}', "");
     }
     full_path.strip_prefix(root).map_or_else(
         |_| {
             full_path.file_name().map_or_else(
                 || full_path.display().to_string(),
-                |name| name.to_string_lossy().to_string(),
+                |name| name.to_string_lossy().to_string().replace('\u{FFFD}', ""),
             )
         },
         |relative_path| relative_path.display().to_string(),
@@ -410,4 +407,23 @@ pub fn path_to_string(path: &Path) -> String {
 #[must_use]
 pub fn is_hidden(entry: &walkdir::DirEntry) -> bool {
     entry.file_name().to_str().is_some_and(|s| s.starts_with('.'))
+}
+
+/// Count the number of digits in a number.
+///
+/// Used for getting the width required to print numbers.
+///
+/// Example input -> output return values:
+/// ```not_rust
+/// 0-9:     1
+/// 10-99:   2
+/// 100-999: 3
+/// ```
+#[must_use]
+fn digit_count(number: usize) -> usize {
+    if number < 10 {
+        1
+    } else {
+        ((number as f64).log10() as usize) + 1
+    }
 }
