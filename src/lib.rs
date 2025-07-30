@@ -31,25 +31,25 @@ const CHARS: &[u8] = b"0123456789abcdef";
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Torrent {
     #[serde(default)]
-    announce: Option<String>,
+    pub announce: Option<String>,
     #[serde(default)]
     #[serde(rename = "announce-list")]
-    announce_list: Option<Vec<Vec<String>>>,
+    pub announce_list: Option<Vec<Vec<String>>>,
     #[serde(rename = "comment")]
-    comment: Option<String>,
+    pub comment: Option<String>,
     #[serde(default)]
     #[serde(rename = "created by")]
-    created_by: Option<String>,
+    pub created_by: Option<String>,
     #[serde(default)]
     #[serde(rename = "creation date")]
-    creation_date: Option<i64>,
+    pub creation_date: Option<i64>,
     #[serde(default)]
-    encoding: Option<String>,
-    info: Info,
+    pub encoding: Option<String>,
+    pub info: Info,
     #[serde(default)]
     nodes: Option<Vec<Node>>,
     #[serde(default)]
-    httpseeds: Option<Vec<String>>,
+    pub httpseeds: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -58,30 +58,31 @@ struct Node(String, i64);
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Info {
     #[serde(default)]
-    files: Option<Vec<File>>,
+    pub files: Option<Vec<File>>,
     #[serde(default)]
-    length: Option<i64>,
+    pub length: Option<i64>,
     #[serde(default)]
-    md5sum: Option<String>,
-    name: Option<String>,
+    pub md5sum: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    path: Option<Vec<String>>,
+    pub path: Option<Vec<String>>,
     #[serde(rename = "piece length")]
-    piece_length: i64,
-    pieces: ByteBuf,
+    pub piece_length: i64,
     #[serde(default)]
-    private: Option<u8>,
+    pub pieces: ByteBuf,
+    #[serde(default)]
+    pub private: Option<u8>,
     #[serde(default)]
     #[serde(rename = "root hash")]
-    root_hash: Option<String>,
+    pub root_hash: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct File {
-    length: i64,
-    path: Vec<String>,
+    pub length: i64,
+    pub path: Vec<String>,
     #[serde(default)]
-    md5sum: Option<String>,
+    pub md5sum: Option<String>,
 }
 
 impl Torrent {
@@ -156,6 +157,11 @@ impl Torrent {
     #[must_use]
     pub const fn info(&self) -> &Info {
         &self.info
+    }
+
+    #[must_use]
+    pub const fn name(&self) -> &Option<String> {
+        &self.info.name
     }
 
     #[must_use]

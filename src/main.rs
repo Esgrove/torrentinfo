@@ -118,30 +118,29 @@ fn torrent_info(filepath: PathBuf, print_details: bool, print_all: bool, print_f
         print_everything(&buf, INDENT);
     } else {
         let torrent = Torrent::from_buf(&buf)?;
-        let info = torrent.info();
 
-        if let Some(v) = info.name() {
-            print_line("name", &v);
+        if let Some(name) = torrent.name() {
+            print_line("name", &name);
         }
-        if let Some(v) = &torrent.comment() {
-            print_line("comment", &v);
+        if let Some(comment) = &torrent.comment() {
+            print_line("comment", &comment);
         }
-        if let Some(v) = &torrent.announce() {
-            print_line("announce url", &v);
+        if let Some(announce_url) = &torrent.announce() {
+            print_line("announce url", &announce_url);
         }
-        if let Some(v) = &torrent.created_by() {
-            print_line("created by", &v);
+        if let Some(created_by) = &torrent.created_by() {
+            print_line("created by", &created_by);
         }
-        if let Some(v) = &torrent.creation_date() {
+        if let Some(creation_date) = &torrent.creation_date() {
             let date_str = Utc
-                .timestamp_opt(*v, 0)
+                .timestamp_opt(*creation_date, 0)
                 .single()
                 .map(|d| d.to_string())
                 .unwrap_or_default();
             print_line("created on", &date_str);
         }
-        if let Some(v) = &torrent.encoding() {
-            print_line("encoding", &v);
+        if let Some(encoding) = &torrent.encoding() {
+            print_line("encoding", &encoding);
         }
 
         let files = torrent.num_files();
@@ -159,50 +158,60 @@ fn torrent_info(filepath: PathBuf, print_details: bool, print_all: bool, print_f
         print_line("info hash", &info_hash_str);
 
         if print_details {
-            let piece_length_str = format!("[{} Bytes]", info.pieces().len()).red().bold();
+            let piece_length_str = format!("[{} Bytes]", torrent.info.pieces().len()).red().bold();
             print_line("piece length", &piece_length_str);
 
-            let private_str = &info.private().unwrap_or_default().to_string();
-            print_line("private", private_str);
+            if let Some(path) = &torrent.info.path {
+                print_line("path", &format!("{path:#?}").cyan());
+            }
+
+            if let Some(private) = torrent.info.private() {
+                print_line("private", private);
+            }
         }
 
         if print_files {
-            let mut files_list: Vec<torrentinfo::File> = Vec::new();
-            let files = torrent.files().as_ref().map_or_else(
-                || {
-                    let name = info.name().to_owned().unwrap_or_else(String::new);
-                    let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
-                    files_list = vec![f];
-                    &files_list
-                },
-                |f| f,
-            );
-
-            if files.len() == 1 {
-                print_line("files", &files[0].path().join("/"));
-            } else {
-                println!("{INDENT}{}", "files".bold());
-
-                let digits = digit_count(files.len());
-
-                for (index, file) in files.iter().enumerate() {
-                    let size = match NumberPrefix::decimal(*file.length() as f64) {
-                        NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
-                        NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
-                    };
-                    println!(
-                        "{}{:>0width$}{INDENT}{:>9}{INDENT}{}",
-                        INDENT.repeat(2),
-                        (index + 1).to_string().bold(),
-                        size.cyan(),
-                        file.path().join("/"),
-                        width = digits
-                    );
-                }
-            }
+            print_files_for_torrent(&torrent);
         }
     }
     Ok(())
+}
+
+/// Print a list of all the files in the torrent.
+fn print_files_for_torrent(torrent: &Torrent) {
+    let mut files_list: Vec<torrentinfo::File> = Vec::new();
+    let files = torrent.files().as_ref().map_or_else(
+        || {
+            let name = torrent.name().to_owned().unwrap_or_default();
+            let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
+            files_list = vec![f];
+            &files_list
+        },
+        |f| f,
+    );
+
+    if files.len() == 1 {
+        print_line("files", &files[0].path().join("/"));
+    } else {
+        println!("{INDENT}{}", "files".bold());
+
+        let digits = digit_count(files.len());
+
+        for (index, file) in files.iter().enumerate() {
+            let size = match NumberPrefix::decimal(*file.length() as f64) {
+                NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
+                NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
+            };
+            println!(
+                "{}{:>0width$}{INDENT}{:>9}{INDENT}{}",
+                INDENT.repeat(2),
+                (index + 1).to_string().bold(),
+                size.cyan(),
+                file.path().join("/"),
+                width = digits
+            );
+        }
+    }
 }
 
 fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
