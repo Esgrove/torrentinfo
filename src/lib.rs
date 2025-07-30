@@ -29,7 +29,7 @@ use serde_bencode::{de, ser};
 use serde_bytes::ByteBuf;
 use sha1::{Digest, Sha1};
 
-pub use error::{Error, Result};
+pub use crate::error::{Error, Result};
 
 pub mod error;
 
