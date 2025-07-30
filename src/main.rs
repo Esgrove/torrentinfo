@@ -57,7 +57,7 @@ struct Args {
     #[arg(
         short,
         long,
-        conflicts_with_all = ["details", "everything"]
+        conflicts_with_all = ["everything"]
     )]
     files: bool,
 
