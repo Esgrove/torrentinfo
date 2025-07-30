@@ -15,6 +15,7 @@ anyhow = "1.0.98"
 chrono = "0.4.2"
 clap = { version = "4.5.42", features = ["derive"] }
 colored = "3.0.0"
+dunce = "1.0.5"
 number_prefix = "0.2.8"
 serde = "1.0.45"
 serde_bencode = "0.2.0"
@@ -22,6 +23,7 @@ serde_bytes = "0.11.17"
 serde_derive = "1.0.45"
 sha-1 = "0.10.1"
 thiserror = "2.0.12"
+walkdir = "2.5.0"
 
 [profile.release]
 lto = true
@@ -37,5 +39,8 @@ unwrap_used = "deny"
 enum_glob_use = "deny"
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"

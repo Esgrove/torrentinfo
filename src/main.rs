@@ -17,31 +17,28 @@
  */
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::Path;
-use std::process;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Error, Result, anyhow};
 use chrono::prelude::*;
 use clap::{Parser, arg};
 use colored::Colorize;
 use number_prefix::{Prefixed, Standalone, binary_prefix};
 use serde_bencode::value::Value;
-
 use torrentinfo::Torrent;
+use walkdir::WalkDir;
+
+const TORRENT_EXTENSION: &str = "torrent";
 
 #[derive(Parser)]
 #[command(author, about, version)]
 #[allow(clippy::struct_excessive_bools)]
 struct Args {
-    /// Show files within the torrent
-    #[arg(
-        short = 'f',
-        long,
-        conflicts_with_all = ["details", "everything"]
-    )]
-    files: bool,
+    /// Optional input directory or file
+    path: Option<String>,
 
     /// Show detailed information about the torrent
     #[arg(short, long)]
@@ -51,12 +48,21 @@ struct Args {
     #[arg(short, long)]
     everything: bool,
 
+    /// Show files within the torrent
+    #[arg(
+        short,
+        long,
+        conflicts_with_all = ["details", "everything"]
+    )]
+    files: bool,
+
     /// Disable colour output
     #[arg(short, long = "nocolour")]
     no_colour: bool,
 
-    /// Torrent file to parse
-    filename: String,
+    /// Recursive directory iteration
+    #[arg(short, long)]
+    recursive: bool,
 }
 
 fn main() -> Result<()> {
@@ -66,23 +72,43 @@ fn main() -> Result<()> {
         colored::control::set_override(false);
     }
 
-    let mut file = match File::open(&args.filename) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Application Error: {e}");
-            process::exit(1);
-        }
+    let input_path = resolve_input_path(args.path.as_deref())?;
+    let (root, files) = resolve_input_files(&input_path, args.recursive)?;
+
+    if files.is_empty() {
+        anyhow::bail!("No torrent files found".yellow());
+    }
+
+    let num_files = files.len();
+    let digits = if num_files < 10 {
+        1
+    } else {
+        ((num_files as f64).log10() as usize) + 1
     };
+
+    for (number, file) in files.into_iter().enumerate() {
+        print!(
+            "{}",
+            format!(
+                "{:>0width$}: {}",
+                number + 1,
+                get_relative_path_or_filename(&file, &root),
+                width = digits
+            )
+            .bold()
+        );
+        torrent_info(file, &args)?;
+    }
+    Ok(())
+}
+
+fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
+    println!("{}", filepath.display());
 
     let indent = "    ";
     let col_width: u32 = 19;
     let mut buf: Vec<u8> = vec![];
-    file.read_to_end(&mut buf)?;
-
-    println!(
-        "{}",
-        Path::new(&args.filename).file_name().unwrap().to_str().unwrap().bold()
-    );
+    File::open(filepath)?.read_to_end(&mut buf)?;
 
     if args.everything {
         print_everything(&buf, indent);
@@ -92,51 +118,56 @@ fn main() -> Result<()> {
 
         if args.details {
             if let Some(v) = info.name() {
-                print_line("name", &v, indent, &col_width);
+                print_line("name", &v, indent, col_width);
             }
             if let Some(v) = &torrent.comment() {
-                print_line("comment", &v, indent, &col_width);
+                print_line("comment", &v, indent, col_width);
             }
             if let Some(v) = &torrent.announce() {
-                print_line("announce url", &v, indent, &col_width);
+                print_line("announce url", &v, indent, col_width);
             }
             if let Some(v) = &torrent.created_by() {
-                print_line("created by", &v, indent, &col_width);
+                print_line("created by", &v, indent, col_width);
             }
             if let Some(v) = &torrent.creation_date() {
-                let date = Utc.timestamp(*v, 0);
-                print_line("created on", &date, indent, &col_width);
+                let date_str = Utc
+                    .timestamp_opt(*v, 0)
+                    .single()
+                    .map(|d| d.to_string())
+                    .unwrap_or_default();
+                print_line("created on", &date_str, indent, col_width);
             }
             if let Some(v) = &torrent.encoding() {
-                print_line("encoding", &v, indent, &col_width);
+                print_line("encoding", &v, indent, col_width);
             }
 
             let files = torrent.num_files();
-            print_line("num files", &files, indent, &col_width);
+            print_line("num files", &files, indent, col_width);
             let size = match binary_prefix(torrent.total_size() as f64) {
                 Standalone(bytes) => format!("{bytes} bytes"),
                 Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
             };
-            print_line("total size", &size.cyan(), indent, &col_width);
+            print_line("total size", &size.cyan(), indent, col_width);
             let info_hash_str = match torrent.info_hash() {
                 Ok(info_hash) => torrentinfo::to_hex(&info_hash),
                 Err(e) => format!("could not calculate info hash: {e}"),
             };
 
-            print_line("info hash", &info_hash_str, indent, &col_width);
+            print_line("info hash", &info_hash_str, indent, col_width);
         }
 
         if args.files || args.details {
             println!("{}{}", indent, "files".bold());
-            let _files: Vec<torrentinfo::File>;
-            let files = if let Some(f) = torrent.files() {
-                f
-            } else {
-                let name = info.name().clone().unwrap();
-                let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
-                _files = vec![f];
-                &_files
-            };
+            let mut files_list: Vec<torrentinfo::File> = Vec::new();
+            let files = torrent.files().as_ref().map_or_else(
+                || {
+                    let name = info.name().to_owned().unwrap_or_else(String::new);
+                    let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
+                    files_list = vec![f];
+                    &files_list
+                },
+                |f| f,
+            );
 
             for (index, file) in files.iter().enumerate() {
                 println!("{}{}", indent.repeat(2), index.to_string().bold());
@@ -165,8 +196,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_line<T: std::fmt::Display>(name: &str, value: &T, indent: &str, col_width: &u32) {
-    let n = *col_width as usize - name.len();
+fn print_line<T: std::fmt::Display>(name: &str, value: &T, indent: &str, col_width: u32) {
+    let n = col_width as usize - name.len();
     println!("{}{} {}{}", indent, name.bold(), " ".repeat(n), value);
 }
 
@@ -240,4 +271,130 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
             Value::Int(i) => println!("{}{}", indent.repeat(depth + 1), i.to_string().cyan()),
         }
     }
+}
+
+/// Return file root and list of files from the input path that can be either a directory or single file.
+fn resolve_input_files(input: &PathBuf, recursive: bool) -> Result<(PathBuf, Vec<PathBuf>)> {
+    if input.is_file() {
+        println!("{}", format!("Parsing file: {}", input.display()).bold().magenta());
+        if input.extension() == Some(TORRENT_EXTENSION.as_ref()) {
+            let parent = input.parent().context("Failed to get parent directory")?.to_path_buf();
+            Ok((parent, vec![input.clone()]))
+        } else {
+            Err(anyhow!("Input path is not an XML file: {}", input.display()))
+        }
+    } else {
+        println!(
+            "{}",
+            format!("Parsing files from: {}", input.display()).bold().magenta()
+        );
+        Ok((input.clone(), get_torrent_files(input, recursive)))
+    }
+}
+
+/// Collect all torrent files recursively from the given root path.
+fn get_torrent_files<P: AsRef<Path>>(root: P, recursive: bool) -> Vec<PathBuf> {
+    let extension = OsStr::new(TORRENT_EXTENSION);
+    let max_depth = if recursive { 999 } else { 1 };
+    let mut files: Vec<PathBuf> = WalkDir::new(root)
+        .max_depth(max_depth)
+        .into_iter()
+        .filter_entry(|e| !is_hidden(e))
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path().to_owned())
+        .filter(|path| path.is_file() && path.extension() == Some(extension))
+        .collect();
+
+    files.sort_by(|a, b| {
+        let a_str = a.to_string_lossy().to_lowercase();
+        let b_str = b.to_string_lossy().to_lowercase();
+        a_str.cmp(&b_str)
+    });
+    files
+}
+
+/// Resolves the provided input path to a directory or file to an absolute path.
+///
+/// If `path` is `None` or an empty string, the current working directory is used.
+/// The function verifies that the provided path exists and is accessible,
+/// returning an error if it does not.
+///
+/// ```rust
+/// use std::path::PathBuf;
+/// use cli_tools::resolve_input_path;
+///
+/// let path = Some("src");
+/// let absolute_path = resolve_input_path(path).unwrap();
+/// ```
+pub fn resolve_input_path(path: Option<&str>) -> Result<PathBuf> {
+    let input_path = path.unwrap_or_default().trim().to_string();
+    let filepath = if input_path.is_empty() {
+        std::env::current_dir().context("Failed to get current working directory")?
+    } else {
+        PathBuf::from(input_path)
+    };
+    if !filepath.exists() {
+        anyhow::bail!(
+            "Input path does not exist or is not accessible: '{}'",
+            filepath.display()
+        );
+    }
+
+    let absolute_input_path = dunce::canonicalize(&filepath)?;
+
+    // Canonicalize fails for network drives on Windows :(
+    if path_to_string(&absolute_input_path).starts_with(r"\\?") && !path_to_string(&filepath).starts_with(r"\\?") {
+        Ok(filepath)
+    } else {
+        Ok(absolute_input_path)
+    }
+}
+
+/// Gets the relative path or filename from a full path based on a root directory.
+///
+/// If the full path is within the root directory, the function returns the relative path.
+/// Otherwise, it returns just the filename. If the filename cannot be determined, the
+/// full path is returned.
+///
+/// ```rust
+/// use std::path::Path;
+/// use cli_tools::get_relative_path_or_filename;
+///
+/// let root = Path::new("/root/dir");
+/// let full_path = root.join("subdir/file.txt");
+/// let relative_path = get_relative_path_or_filename(&full_path, root);
+/// assert_eq!(relative_path, "subdir/file.txt");
+///
+/// let outside_path = Path::new("/root/dir/another.txt");
+/// let relative_or_filename = get_relative_path_or_filename(&outside_path, root);
+/// assert_eq!(relative_or_filename, "another.txt");
+/// ```
+#[must_use]
+pub fn get_relative_path_or_filename(full_path: &Path, root: &Path) -> String {
+    if full_path == root {
+        return full_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    }
+    full_path.strip_prefix(root).map_or_else(
+        |_| {
+            full_path.file_name().map_or_else(
+                || full_path.display().to_string(),
+                |name| name.to_string_lossy().to_string(),
+            )
+        },
+        |relative_path| relative_path.display().to_string(),
+    )
+}
+
+/// Convert given path to string with invalid Unicode handling.
+pub fn path_to_string(path: &Path) -> String {
+    path.to_str().map_or_else(
+        || path.to_string_lossy().to_string().replace('\u{FFFD}', ""),
+        std::string::ToString::to_string,
+    )
+}
+
+/// Check if entry is a hidden file or directory (starts with '.')
+#[must_use]
+pub fn is_hidden(entry: &walkdir::DirEntry) -> bool {
+    entry.file_name().to_str().is_some_and(|s| s.starts_with('.'))
 }
