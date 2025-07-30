@@ -1,4 +1,4 @@
-/*     
+/*
  * torrentinfo, A torrent file parser
  * Copyright (C) 2018 Daniel Müller
  *

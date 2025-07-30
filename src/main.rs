@@ -33,6 +33,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
+use std::sync::LazyLock;
 
 use chrono::prelude::*;
 use clap::{App, AppSettings, Arg};
@@ -44,12 +45,10 @@ use torrentinfo::Torrent;
 
 const VERSION: &str = crate_version!();
 
-lazy_static! {
-    static ref S_NUMBER: Style = Style::cyan();
-    static ref S_BYTES: Style = Style::red().bold();
-    static ref S_LABEL: Style = Style::new().dimmed().bold();
-    static ref S_LABEL_ALT: Style = Style::green();
-}
+static S_NUMBER: LazyLock<Style> = LazyLock::new(Style::cyan);
+static S_BYTES: LazyLock<Style> = LazyLock::new(|| Style::red().bold());
+static S_LABEL: LazyLock<Style> = LazyLock::new(|| Style::new().dimmed().bold());
+static S_LABEL_ALT: LazyLock<Style> = LazyLock::new(Style::green);
 
 fn main() {
     let app = App::new("torrentinfo")
@@ -109,7 +108,7 @@ fn main() {
     let mut file = match File::open(filename) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("Application Error: {}", e);
+            eprintln!("Application Error: {e}");
             process::exit(1);
         }
     };
@@ -124,67 +123,66 @@ fn main() {
         Paint::new(Path::new(filename).file_name().unwrap().to_str().unwrap()).bold()
     );
 
-    if !show_everything {
+    if show_everything {
+        print_everything(&buf, indent);
+    } else {
         let torrent = Torrent::from_buf(&buf).unwrap();
         let info = torrent.info();
 
         if !show_details {
             if let Some(ref v) = info.name() {
-                print_line("name", &v, &indent, &col_width);
+                print_line("name", &v, indent, &col_width);
             }
             if let Some(ref v) = &torrent.comment() {
-                print_line("comment", &v, &indent, &col_width);
+                print_line("comment", &v, indent, &col_width);
             }
             if let Some(ref v) = &torrent.announce() {
-                print_line("announce url", &v, &indent, &col_width);
+                print_line("announce url", &v, indent, &col_width);
             }
             if let Some(ref v) = &torrent.created_by() {
-                print_line("created by", &v, &indent, &col_width);
+                print_line("created by", &v, indent, &col_width);
             }
             if let Some(ref v) = &torrent.creation_date() {
                 let date = Utc.timestamp(*v, 0);
-                print_line("created on", &date, &indent, &col_width);
+                print_line("created on", &date, indent, &col_width);
             }
             if let Some(ref v) = &torrent.encoding() {
-                print_line("encoding", &v, &indent, &col_width);
+                print_line("encoding", &v, indent, &col_width);
             }
 
             let files = torrent.num_files();
-            print_line("num files", &files, &indent, &col_width);
-
-            ;
+            print_line("num files", &files, indent, &col_width);
             let size = match binary_prefix(torrent.total_size() as f64) {
-                Standalone(bytes) => format!("{} bytes", bytes),
-                Prefixed(prefix, n) => format!("{:.2} {}B", n, prefix),
+                Standalone(bytes) => format!("{bytes} bytes"),
+                Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
             };
-            print_line("total size", &S_NUMBER.paint(size), &indent, &col_width);
+            print_line("total size", &S_NUMBER.paint(size), indent, &col_width);
             let info_hash_str = match torrent.info_hash() {
                 Ok(info_hash) => torrentinfo::to_hex(&info_hash),
-                Err(e) => format!("could not calculate info hash: {}", e),
+                Err(e) => format!("could not calculate info hash: {e}"),
             };
 
-            print_line("info hash", &info_hash_str, &indent, &col_width);
+            print_line("info hash", &info_hash_str, indent, &col_width);
         }
 
         if show_files || show_details {
             println!("{}{}", indent, S_LABEL.paint("files"));
             let _files: Vec<torrentinfo::File>;
-            let files = match torrent.files() {
-                Some(f) => f,
-                None => {
-                    let name = info.name().clone().unwrap();
-                    let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
-                    _files = vec![f];
-                    &_files
-                }
+            let files = if let Some(f) = torrent.files() {
+                f
+            } else {
+                let name = info.name().clone().unwrap();
+                let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
+                _files = vec![f];
+                &_files
             };
 
             for (index, file) in files.iter().enumerate() {
                 println!("{}{}", indent.repeat(2), S_LABEL.paint(index));
                 println!("{}{}", indent.repeat(3), file.path().join("/"));
                 let size = match binary_prefix(*file.length() as f64) {
-                    Standalone(bytes) => format!("{} bytes", bytes),
-                    Prefixed(prefix, n) => format!("{:.2} {}B", n, prefix),
+                    Standalone(bytes) => format!("{bytes} bytes"),
+                    Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
                 };
                 println!("{}{}", indent.repeat(3), S_NUMBER.paint(size));
             }
@@ -200,36 +198,22 @@ fn main() {
                 S_BYTES.paint(format!("[{} Bytes]", info.pieces().len()))
             );
             println!("{}{}", indent, S_LABEL.paint("private"));
-            println!(
-                "{}{}",
-                indent.repeat(2),
-                &info.private().unwrap_or_default()
-            );
+            println!("{}{}", indent.repeat(2), &info.private().unwrap_or_default());
         }
-    } else {
-        print_everything(&buf, indent);
     }
 }
 
 fn print_line<T: std::fmt::Display>(name: &str, value: &T, indent: &str, col_width: &u32) {
     let n = *col_width as usize - name.len();
-    println!(
-        "{}{} {}{}",
-        indent,
-        S_LABEL.paint(name),
-        " ".repeat(n),
-        value
-    );
+    println!("{}{} {}{}", indent, S_LABEL.paint(name), " ".repeat(n), value);
 }
 
 fn print_everything(buf: &[u8], indent: &str) {
     let bencoded = serde_bencode::from_bytes(buf).expect("could not decode .torrent file");
-    match bencoded {
-        Value::Dict(root) => print_dict(&root, indent, 1),
-        _ => {
-            println!("torrent file is not a dict");
-            return;
-        }
+    if let Value::Dict(root) = bencoded {
+        print_dict(&root, indent, 1);
+    } else {
+        println!("torrent file is not a dict");
     }
 }
 
@@ -248,17 +232,17 @@ fn print_dict(dict: &Dict, indent: &str, depth: usize) {
         println!("{}{}", indent.repeat(depth), style(key));
 
         match v {
-            Value::Dict(ref d) => print_dict(d, &indent, depth + 1),
-            Value::List(ref l) => print_list(l, &indent, depth + 1),
+            Value::Dict(ref d) => print_dict(d, indent, depth + 1),
+            Value::List(ref l) => print_list(l, indent, depth + 1),
             Value::Bytes(ref b) => {
                 if b.len() > 80 {
                     println!(
                         "{}{}",
                         indent.repeat(depth + 1),
                         S_BYTES.paint(format!("[{} Bytes]", b.len()))
-                    )
+                    );
                 } else {
-                    println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b))
+                    println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
                 }
             }
             Value::Int(ref i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),
@@ -277,17 +261,17 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
     for (k, v) in list.iter().enumerate() {
         println!("{}{}", indent.repeat(depth), style(k));
         match v {
-            Value::Dict(ref d) => print_dict(d, &indent, depth + 1),
-            Value::List(ref l) => print_list(l, &indent, depth + 1),
+            Value::Dict(ref d) => print_dict(d, indent, depth + 1),
+            Value::List(ref l) => print_list(l, indent, depth + 1),
             Value::Bytes(ref b) => {
                 if b.len() > 80 {
                     println!(
                         "{}{}",
                         indent.repeat(depth + 1),
                         S_BYTES.paint(format!("[{} Bytes]", b.len()))
-                    )
+                    );
                 } else {
-                    println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b))
+                    println!("{}{}", indent.repeat(depth + 1), String::from_utf8_lossy(b));
                 }
             }
             Value::Int(ref i) => println!("{}{}", indent.repeat(depth + 1), S_NUMBER.paint(i)),

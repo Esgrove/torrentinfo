@@ -59,20 +59,23 @@ pub struct Torrent {
 
 impl Torrent {
     pub fn from_buf(buf: &[u8]) -> Result<Self> {
-        de::from_bytes(buf).map_err(|e| e.into())
+        de::from_bytes(buf).map_err(std::convert::Into::into)
     }
 
-    pub fn files(&self) -> &Option<Vec<File>> {
+    #[must_use]
+    pub const fn files(&self) -> &Option<Vec<File>> {
         &self.info.files
     }
 
-    pub fn num_files(&self) -> usize {
+    #[must_use]
+    pub const fn num_files(&self) -> usize {
         match self.files() {
             Some(f) => f.len(),
             None => 1,
         }
     }
 
+    #[must_use]
     pub fn total_size(&self) -> i64 {
         if self.files().is_none() {
             return self.info.length.unwrap_or_default();
@@ -95,31 +98,38 @@ impl Torrent {
         Ok(info_hash)
     }
 
-    pub fn info(&self) -> &Info {
+    #[must_use]
+    pub const fn info(&self) -> &Info {
         &self.info
     }
 
-    pub fn comment(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn comment(&self) -> &Option<String> {
         &self.comment
     }
 
-    pub fn announce(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn announce(&self) -> &Option<String> {
         &self.announce
     }
 
-    pub fn announce_list(&self) -> &Option<Vec<String>> {
+    #[must_use]
+    pub const fn announce_list(&self) -> &Option<Vec<String>> {
         &self.announce_list
     }
 
-    pub fn created_by(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn created_by(&self) -> &Option<String> {
         &self.created_by
     }
 
-    pub fn creation_date(&self) -> &Option<i64> {
+    #[must_use]
+    pub const fn creation_date(&self) -> &Option<i64> {
         &self.creation_date
     }
 
-    pub fn encoding(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn encoding(&self) -> &Option<String> {
         &self.encoding
     }
 }
@@ -149,19 +159,23 @@ pub struct Info {
 }
 
 impl Info {
-    pub fn name(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn name(&self) -> &Option<String> {
         &self.name
     }
 
-    pub fn piece_length(&self) -> &i64 {
+    #[must_use]
+    pub const fn piece_length(&self) -> &i64 {
         &self.piece_length
     }
 
-    pub fn pieces(&self) -> &ByteBuf {
+    #[must_use]
+    pub const fn pieces(&self) -> &ByteBuf {
         &self.pieces
     }
 
-    pub fn private(&self) -> &Option<u8> {
+    #[must_use]
+    pub const fn private(&self) -> &Option<u8> {
         &self.private
     }
 }
@@ -175,6 +189,7 @@ pub struct File {
 }
 
 impl File {
+    #[must_use]
     pub fn new(length: i64, path: Vec<String>) -> Self {
         Self {
             length,
@@ -183,10 +198,12 @@ impl File {
         }
     }
 
-    pub fn length(&self) -> &i64 {
+    #[must_use]
+    pub const fn length(&self) -> &i64 {
         &self.length
     }
 
+    #[must_use]
     pub fn path(&self) -> &[String] {
         &self.path
     }
@@ -194,6 +211,7 @@ impl File {
 
 const CHARS: &[u8] = b"0123456789abcdef";
 
+#[must_use]
 pub fn to_hex(bytes: &[u8]) -> String {
     let mut v = Vec::with_capacity(bytes.len() * 2);
     for &byte in bytes {
@@ -201,7 +219,7 @@ pub fn to_hex(bytes: &[u8]) -> String {
         v.push(CHARS[(byte & 0xf) as usize]);
     }
 
-    unsafe { String::from_utf8_unchecked(v) }
+    String::from_utf8(v).expect("Invalid UTF-8 sequence")
 }
 
 #[cfg(test)]
@@ -210,6 +228,6 @@ mod tests {
 
     #[test]
     pub fn test_to_hex() {
-        assert_eq!(to_hex("foobar".as_bytes()), "666f6f626172");
+        assert_eq!(to_hex(b"foobar"), "666f6f626172");
     }
 }
