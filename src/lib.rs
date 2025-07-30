@@ -26,6 +26,8 @@ use sha1::{Digest, Sha1};
 
 use crate::error::Result;
 
+const CHARS: &[u8] = b"0123456789abcdef";
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Torrent {
     #[serde(default)]
@@ -48,6 +50,38 @@ pub struct Torrent {
     nodes: Option<Vec<Node>>,
     #[serde(default)]
     httpseeds: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Node(String, i64);
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct Info {
+    #[serde(default)]
+    files: Option<Vec<File>>,
+    #[serde(default)]
+    length: Option<i64>,
+    #[serde(default)]
+    md5sum: Option<String>,
+    name: Option<String>,
+    #[serde(default)]
+    path: Option<Vec<String>>,
+    #[serde(rename = "piece length")]
+    piece_length: i64,
+    pieces: ByteBuf,
+    #[serde(default)]
+    private: Option<u8>,
+    #[serde(default)]
+    #[serde(rename = "root hash")]
+    root_hash: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct File {
+    length: i64,
+    path: Vec<String>,
+    #[serde(default)]
+    md5sum: Option<String>,
 }
 
 impl Torrent {
@@ -155,30 +189,6 @@ impl Torrent {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Node(String, i64);
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct Info {
-    #[serde(default)]
-    files: Option<Vec<File>>,
-    #[serde(default)]
-    length: Option<i64>,
-    #[serde(default)]
-    md5sum: Option<String>,
-    name: Option<String>,
-    #[serde(default)]
-    path: Option<Vec<String>>,
-    #[serde(rename = "piece length")]
-    piece_length: i64,
-    pieces: ByteBuf,
-    #[serde(default)]
-    private: Option<u8>,
-    #[serde(default)]
-    #[serde(rename = "root hash")]
-    root_hash: Option<String>,
-}
-
 impl Info {
     #[must_use]
     pub const fn name(&self) -> &Option<String> {
@@ -201,14 +211,6 @@ impl Info {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct File {
-    length: i64,
-    path: Vec<String>,
-    #[serde(default)]
-    md5sum: Option<String>,
-}
-
 impl File {
     #[must_use]
     pub fn new(length: i64, path: Vec<String>) -> Self {
@@ -229,8 +231,6 @@ impl File {
         &self.path
     }
 }
-
-const CHARS: &[u8] = b"0123456789abcdef";
 
 #[must_use]
 pub fn to_hex(bytes: &[u8]) -> String {
