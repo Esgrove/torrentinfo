@@ -167,28 +167,47 @@ fn torrent_info(filepath: PathBuf, args: &Args) -> Result<(), Error> {
                 |f| f,
             );
 
+            let num_files = files.len();
+            let digits = if num_files < 10 {
+                1
+            } else {
+                ((num_files as f64).log10() as usize) + 1
+            };
+
             for (index, file) in files.iter().enumerate() {
-                println!("{}{}", indent.repeat(2), index.to_string().bold());
-                println!("{}{}", indent.repeat(3), file.path().join("/"));
                 let size = match NumberPrefix::decimal(*file.length() as f64) {
                     NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
                     NumberPrefix::Prefixed(prefix, n) => format!("{n:.2} {prefix}B"),
                 };
-                println!("{}{}", indent.repeat(3), size.cyan());
+                println!(
+                    "{}{:>0width$}{}{}{}{}",
+                    indent.repeat(2),
+                    (index + 1).to_string().bold(),
+                    indent,
+                    size.cyan(),
+                    indent,
+                    file.path().join("/"),
+                    width = digits
+                );
             }
         }
 
         if args.details {
-            println!("{}{}", indent, "piece length".bold());
-            println!("{}{}", indent.repeat(2), &info.piece_length());
-            println!("{}{}", indent, "pieces".bold());
+            println!("{}{}{}{}", indent, "piece length".bold(), indent, &info.piece_length());
             println!(
-                "{}{}",
-                indent.repeat(2),
+                "{}{}{}{}",
+                indent,
+                "pieces".bold(),
+                indent,
                 format!("[{} Bytes]", info.pieces().len()).red().bold()
             );
-            println!("{}{}", indent, "private".bold());
-            println!("{}{}", indent.repeat(2), &info.private().unwrap_or_default());
+            println!(
+                "{}{}{}{}",
+                indent,
+                "private".bold(),
+                indent,
+                &info.private().unwrap_or_default()
+            );
         }
     }
     Ok(())
