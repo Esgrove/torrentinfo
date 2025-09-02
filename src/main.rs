@@ -18,12 +18,14 @@
 
 mod utils;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, arg};
 use colored::Colorize;
+use itertools::Itertools;
 use number_prefix::NumberPrefix;
 use serde_bencode::value::Value;
 
@@ -66,6 +68,10 @@ struct Args {
     #[arg(short, long)]
     recursive: bool,
 
+    /// Sort files by size
+    #[arg(short, long)]
+    sort: bool,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -85,7 +91,33 @@ fn main() -> Result<()> {
         anyhow::bail!("No torrent files found");
     }
 
-    print_torrent_files(files, &root, &args);
+    if args.sort {
+        files
+            .iter()
+            .map(|file| {
+                Torrent::from_file(file)
+                    .map(|torrent| (file, torrent))
+                    .map_err(anyhow::Error::from)
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .sorted_by(|(_, a), (_, b)| a.total_size().cmp(&b.total_size()))
+            .for_each(|(file, torrent)| {
+                let size = utils::format_file_size(torrent.total_size() as f64);
+                let name: Cow<str> = torrent.name().as_deref().map_or_else(
+                    || {
+                        file.file_stem()
+                            .and_then(|s| s.to_str())
+                            .map_or(Cow::Borrowed("unknown"), Cow::Borrowed)
+                    },
+                    Cow::Borrowed,
+                );
+                println!("{:>10}   {name}", size.cyan());
+            });
+    } else {
+        print_torrent_files(files, &root, &args);
+    }
+
     Ok(())
 }
 
