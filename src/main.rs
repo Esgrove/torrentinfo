@@ -195,7 +195,7 @@ fn print_info(torrent: &Torrent) {
 
 /// Print detailed torrent information
 fn print_extra_info(torrent: &Torrent) {
-    let piece_length_str = format!("[{} Bytes]", torrent.info.pieces().len()).red().bold();
+    let piece_length_str = format!("[{} Bytes]", torrent.info.pieces().len()).cyan().bold();
     print_line("piece length", &piece_length_str);
 
     if let Some(path) = &torrent.info.path {
@@ -321,7 +321,7 @@ fn print_bytes(bytes: &[u8], indent: &str, depth: usize) {
         println!(
             "{}{}",
             indent.repeat(depth),
-            format!("[{} Bytes]", bytes.len()).magenta().bold()
+            format!("[{} Bytes]", bytes.len()).cyan().bold()
         );
     } else {
         let content = std::str::from_utf8(bytes).unwrap_or("[invalid utf-8]");
