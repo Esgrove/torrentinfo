@@ -203,7 +203,7 @@ fn print_extra_info(torrent: &Torrent) {
     }
 
     if let Some(private) = torrent.info.private() {
-        print_line("private", private);
+        print_line("private", &utils::colorize_bool(private > &0));
     }
 }
 
@@ -321,7 +321,7 @@ fn print_bytes(bytes: &[u8], indent: &str, depth: usize) {
         println!(
             "{}{}",
             indent.repeat(depth),
-            format!("[{} Bytes]", bytes.len()).red().bold()
+            format!("[{} Bytes]", bytes.len()).magenta().bold()
         );
     } else {
         let content = std::str::from_utf8(bytes).unwrap_or("[invalid utf-8]");

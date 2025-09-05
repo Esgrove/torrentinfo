@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow};
 use chrono::{TimeZone, Utc};
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use number_prefix::NumberPrefix;
 use walkdir::WalkDir;
 
@@ -178,4 +178,10 @@ fn get_all_torrent_files<P: AsRef<Path>>(root: P, recursive: bool) -> Vec<PathBu
 #[must_use]
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {
     entry.file_name().to_str().is_some_and(|s| s.starts_with('.'))
+}
+
+/// Format bool value as a coloured string.
+#[must_use]
+pub fn colorize_bool(value: bool) -> ColoredString {
+    if value { "true".green() } else { "false".red() }
 }
