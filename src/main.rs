@@ -293,7 +293,11 @@ fn print_dict(dict: &Dict, indent: &str, depth: usize) {
         println!(
             "{}{}",
             indent.repeat(depth),
-            if depth % 2 == 0 { key.green() } else { key.bold() }
+            if depth.is_multiple_of(2) {
+                key.green()
+            } else {
+                key.bold()
+            }
         );
         print_value(value, indent, depth + 1);
     }
@@ -305,7 +309,7 @@ fn print_list(list: &[Value], indent: &str, depth: usize) {
         println!(
             "{}{}",
             indent.repeat(depth),
-            if depth % 2 == 0 {
+            if depth.is_multiple_of(2) {
                 key.to_string().green()
             } else {
                 key.to_string().bold()
