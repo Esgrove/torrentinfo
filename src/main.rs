@@ -76,5 +76,5 @@ fn main() -> Result<()> {
         anyhow::bail!("No torrent files found");
     }
 
-    cli::print_torrent_files(files, &root, &args)
+    cli::print_torrent_files(&files, &root, &args)
 }

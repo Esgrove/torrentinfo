@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Error};
+use anyhow::Context;
 use colored::Colorize;
 use itertools::Itertools;
 use number_prefix::NumberPrefix;
@@ -19,28 +19,28 @@ const INDENT: &str = "    ";
 type Dict = HashMap<Vec<u8>, Value>;
 
 /// Process all torrent files and print their information
-pub fn print_torrent_files(files: Vec<PathBuf>, root: &Path, args: &Args) -> anyhow::Result<()> {
+pub fn print_torrent_files(files: &[PathBuf], root: &Path, args: &Args) -> anyhow::Result<()> {
     if args.sort {
-        print_torrents_sorted(&files)
+        print_torrents_sorted(files)
     } else {
-        print_torrents(files, root, args)
+        print_torrents(files, root, args);
+        Ok(())
     }
 }
 
-fn print_torrents(files: Vec<PathBuf>, root: &Path, args: &Args) -> Result<(), Error> {
+fn print_torrents(files: &[PathBuf], root: &Path, args: &Args) {
     let num_files = files.len();
     let digits = utils::digit_count(num_files);
 
-    for (number, file) in files.into_iter().enumerate() {
-        print_file_header(number + 1, num_files, &file, root, digits);
-        if let Err(e) = print_single_torrent(&file, args) {
+    for (number, file) in files.iter().enumerate() {
+        print_file_header(number + 1, num_files, file, root, digits);
+        if let Err(e) = print_single_torrent(file, args) {
             eprintln!("{}", format!("Error: {e}").red());
         }
     }
-    Ok(())
 }
 
-fn print_torrents_sorted(files: &Vec<PathBuf>) -> anyhow::Result<()> {
+fn print_torrents_sorted(files: &[PathBuf]) -> anyhow::Result<()> {
     let mut total_size: u64 = 0;
     files
         .iter()
