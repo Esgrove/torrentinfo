@@ -20,7 +20,7 @@ mod cli;
 mod utils;
 
 use anyhow::Result;
-use clap::{Parser, arg};
+use clap::Parser;
 
 #[derive(Parser)]
 #[command(author, about, version)]

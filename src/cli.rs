@@ -148,15 +148,12 @@ fn print_extra_info(torrent: &Torrent) {
 /// Print a list of all the files in the torrent.
 fn print_files(torrent: &Torrent) {
     let mut files_list: Vec<torrentinfo::File> = Vec::new();
-    let files = torrent.files().as_ref().map_or_else(
-        || {
-            let name = torrent.name().to_owned().unwrap_or_default();
-            let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
-            files_list = vec![f];
-            &files_list
-        },
-        |f| f,
-    );
+    let files = torrent.files().as_ref().unwrap_or_else(|| {
+        let name = torrent.name().to_owned().unwrap_or_default();
+        let f = torrentinfo::File::new(torrent.total_size(), vec![name]);
+        files_list = vec![f];
+        &files_list
+    });
 
     if files.len() == 1 {
         print_line("files", &files[0].path().join("/"));

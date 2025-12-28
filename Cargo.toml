@@ -1,6 +1,6 @@
 [package]
 name = "torrentinfo"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Daniel Müller <perlfuchsi@gmail.com>", "Esgrove <esgrove@outlook.com"]
 description = "A torrent file parser"
 license = "GPL-3.0+"
@@ -9,7 +9,7 @@ categories = ["command-line-utilities"]
 repository = "https://github.com/fuchsi/torrentinfo"
 keywords = ["torrent", "bencode"]
 edition = "2024"
-rust-version = "1.90.0"
+rust-version = "1.91.0"
 
 [dependencies]
 anyhow = "1.0.100"
