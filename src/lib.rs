@@ -1,6 +1,7 @@
 /*
  * torrentinfo, A torrent file parser
  * Copyright (C) 2018  Daniel Müller
+ * Copyright (C) 2025  Akseli Lukkarila (modifications and new features)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

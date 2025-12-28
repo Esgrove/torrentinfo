@@ -1,6 +1,7 @@
 /*
  * torrentinfo, A torrent file parser
  * Copyright (C) 2018  Daniel Müller
+ * Copyright (C) 2025  Akseli Lukkarila (modifications and new features)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,16 +66,5 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    if args.no_colour {
-        colored::control::set_override(false);
-    }
-
-    let input_path = utils::resolve_input_path(args.path.as_deref())?;
-    let (root, files) = utils::get_torrent_files(&input_path, args.recursive, args.verbose)?;
-
-    if files.is_empty() {
-        anyhow::bail!("No torrent files found");
-    }
-
-    cli::print_torrent_files(&files, &root, &args)
+    cli::TorrentInfo::new(args)?.run()
 }
