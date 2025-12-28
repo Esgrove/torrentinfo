@@ -1,6 +1,6 @@
 [package]
 name = "torrentinfo"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Daniel Müller <perlfuchsi@gmail.com>", "Esgrove <esgrove@outlook.com"]
 description = "A torrent file parser"
 license = "GPL-3.0+"
@@ -15,7 +15,9 @@ rust-version = "1.91.0"
 anyhow = "1.0.100"
 chrono = "0.4.41"
 clap = { version = "4.5.51", features = ["derive"] }
+clap_complete = "4.5.61"
 colored = "3.0.0"
+dirs = "6.0.0"
 dunce = "1.0.5"
 itertools = "0.14.0"
 number_prefix = "0.4.0"
