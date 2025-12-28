@@ -69,6 +69,16 @@ impl TorrentInfo {
         }
     }
 
+    /// Print the file header with numbering (only shows index when multiple files)
+    fn print_file_header(&self, current: usize, total: usize, file: &Path, width: usize) {
+        let filename = utils::get_relative_path_or_filename(file, &self.root);
+        if total > 1 {
+            println!("{}", format!("{current:>0width$}/{total}: {filename}").bold());
+        } else {
+            println!("{}", filename.bold());
+        }
+    }
+
     fn print_torrents_sorted(&self) -> anyhow::Result<()> {
         let mut total_size: u64 = 0;
         self.files
@@ -128,49 +138,49 @@ impl TorrentInfo {
     /// Print basic torrent information
     fn print_info(torrent: &Torrent) {
         if let Some(name) = torrent.name() {
-            print_line("name", &name);
+            Self::print_line("name", &name);
         }
         if let Some(comment) = &torrent.comment() {
-            print_line("comment", comment);
+            Self::print_line("comment", comment);
         }
         if let Some(announce_url) = &torrent.announce() {
-            print_line("announce url", announce_url);
+            Self::print_line("announce url", announce_url);
         }
         if let Some(created_by) = &torrent.created_by() {
-            print_line("created by", created_by);
+            Self::print_line("created by", created_by);
         }
         if let Some(creation_date) = torrent.creation_date() {
             let date_str = utils::format_creation_date(*creation_date);
-            print_line("created on", &date_str);
+            Self::print_line("created on", &date_str);
         }
         if let Some(encoding) = &torrent.encoding() {
-            print_line("encoding", encoding);
+            Self::print_line("encoding", encoding);
         }
 
         let files = torrent.num_files();
-        print_line("num files", &files);
+        Self::print_line("num files", &files);
 
         let size_str = utils::format_file_size(torrent.total_size() as f64);
-        print_line("total size", &size_str.cyan());
+        Self::print_line("total size", &size_str.cyan());
 
         let info_hash_str = match torrent.info_hash() {
             Ok(info_hash) => torrentinfo::to_hex(&info_hash),
             Err(e) => format!("Could not calculate info hash: {e}"),
         };
-        print_line("info hash", &info_hash_str);
+        Self::print_line("info hash", &info_hash_str);
     }
 
     /// Print detailed torrent information
     fn print_extra_info(torrent: &Torrent) {
         let piece_length_str = format!("[{} Bytes]", torrent.info.pieces().len()).cyan().bold();
-        print_line("piece length", &piece_length_str);
+        Self::print_line("piece length", &piece_length_str);
 
         if let Some(path) = &torrent.info.path {
-            print_line("path", &format!("{path:#?}").cyan());
+            Self::print_line("path", &format!("{path:#?}").cyan());
         }
 
         if let Some(private) = torrent.info.private() {
-            print_line("private", &utils::colorize_bool(private > &0));
+            Self::print_line("private", &utils::colorize_bool(private > &0));
         }
     }
 
@@ -185,7 +195,7 @@ impl TorrentInfo {
         });
 
         if files.len() == 1 {
-            print_line("files", &files[0].path().join("/"));
+            Self::print_line("files", &files[0].path().join("/"));
         } else {
             println!("{INDENT}{}", "files".bold());
 
@@ -208,92 +218,78 @@ impl TorrentInfo {
         }
     }
 
-    /// Print the file header with numbering
-    fn print_file_header(&self, current: usize, total: usize, file: &Path, width: usize) {
-        println!(
-            "{}",
-            format!(
-                "{:>0width$}/{total}: {}",
-                current,
-                utils::get_relative_path_or_filename(file, &self.root),
-                width = width
-            )
-            .bold()
-        );
-    }
-
     /// Print all data in the torrent file without trying to parse it into a `Torrent`
     fn print_raw_data(filepath: &Path, indent: &str) -> anyhow::Result<()> {
         let bytes = Torrent::read_bytes(filepath)?;
         let bencoded = serde_bencode::from_bytes(&bytes).context("could not decode .torrent file")?;
         if let Value::Dict(root) = bencoded {
-            print_dict(&root, indent, 1);
+            Self::print_dict(&root, indent, 1);
         } else {
             println!("torrent file is not a dict");
         }
         Ok(())
     }
-}
 
-/// Print a formatted line of data with indentation
-fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
-    let num_whitespace = COLUMN_WIDTH.saturating_sub(name.len());
-    println!("{INDENT}{} {}{value}", name.bold(), " ".repeat(num_whitespace));
-}
-
-/// Print a single bencode value
-fn print_value(value: &Value, indent: &str, depth: usize) {
-    match value {
-        Value::Dict(d) => print_dict(d, indent, depth),
-        Value::List(l) => print_list(l, indent, depth),
-        Value::Bytes(b) => print_bytes(b, indent, depth),
-        Value::Int(i) => println!("{}{}", indent.repeat(depth), i.to_string().cyan()),
+    /// Print a formatted line of data with indentation
+    fn print_line<T: std::fmt::Display>(name: &str, value: &T) {
+        let num_whitespace = COLUMN_WIDTH.saturating_sub(name.len());
+        println!("{INDENT}{} {}{value}", name.bold(), " ".repeat(num_whitespace));
     }
-}
 
-/// Print dictionary values recursively
-fn print_dict(dict: &Dict, indent: &str, depth: usize) {
-    for (key, value) in dict {
-        let key = String::from_utf8_lossy(key);
-        println!(
-            "{}{}",
-            indent.repeat(depth),
-            if depth.is_multiple_of(2) {
-                key.green()
-            } else {
-                key.bold()
-            }
-        );
-        print_value(value, indent, depth + 1);
+    /// Print a single bencode value
+    fn print_value(value: &Value, indent: &str, depth: usize) {
+        match value {
+            Value::Dict(d) => Self::print_dict(d, indent, depth),
+            Value::List(l) => Self::print_list(l, indent, depth),
+            Value::Bytes(b) => Self::print_bytes(b, indent, depth),
+            Value::Int(i) => println!("{}{}", indent.repeat(depth), i.to_string().cyan()),
+        }
     }
-}
 
-/// Print list values recursively
-fn print_list(list: &[Value], indent: &str, depth: usize) {
-    for (key, value) in list.iter().enumerate() {
-        println!(
-            "{}{}",
-            indent.repeat(depth),
-            if depth.is_multiple_of(2) {
-                key.to_string().green()
-            } else {
-                key.to_string().bold()
-            }
-        );
-        print_value(value, indent, depth + 1);
+    /// Print dictionary values recursively
+    fn print_dict(dict: &Dict, indent: &str, depth: usize) {
+        for (key, value) in dict {
+            let key = String::from_utf8_lossy(key);
+            println!(
+                "{}{}",
+                indent.repeat(depth),
+                if depth.is_multiple_of(2) {
+                    key.green()
+                } else {
+                    key.bold()
+                }
+            );
+            Self::print_value(value, indent, depth + 1);
+        }
     }
-}
 
-/// Print byte values with appropriate formatting
-fn print_bytes(bytes: &[u8], indent: &str, depth: usize) {
-    if bytes.len() > BYTE_THRESHOLD {
-        println!(
-            "{}{}",
-            indent.repeat(depth),
-            format!("[{} Bytes]", bytes.len()).cyan().bold()
-        );
-    } else {
-        let content = std::str::from_utf8(bytes).unwrap_or("[invalid utf-8]");
-        println!("{}{content}", indent.repeat(depth));
+    /// Print list values recursively
+    fn print_list(list: &[Value], indent: &str, depth: usize) {
+        for (key, value) in list.iter().enumerate() {
+            println!(
+                "{}{}",
+                indent.repeat(depth),
+                if depth.is_multiple_of(2) {
+                    key.to_string().green()
+                } else {
+                    key.to_string().bold()
+                }
+            );
+            Self::print_value(value, indent, depth + 1);
+        }
+    }
+
+    /// Print byte values with appropriate formatting
+    fn print_bytes(bytes: &[u8], indent: &str, depth: usize) {
+        if bytes.len() > BYTE_THRESHOLD {
+            println!(
+                "{}{}",
+                indent.repeat(depth),
+                format!("[{} Bytes]", bytes.len()).cyan().bold()
+            );
+        } else {
+            let content = std::str::from_utf8(bytes).unwrap_or("[invalid utf-8]");
+            println!("{}{content}", indent.repeat(depth));
+        }
     }
 }
