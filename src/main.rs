@@ -1,6 +1,7 @@
 /*
  * torrentinfo, A torrent file parser
  * Copyright (C) 2018  Daniel Müller
+ * Copyright (C) 2025  Akseli Lukkarila (modifications and new features)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,15 +20,19 @@
 mod cli;
 mod utils;
 
+use std::path::PathBuf;
+
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::Shell;
 
 #[derive(Parser)]
 #[command(author, about, version)]
 #[allow(clippy::struct_excessive_bools)]
 struct Args {
     /// Optional input directory or file
-    path: Option<String>,
+    #[arg(value_hint = clap::ValueHint::AnyPath)]
+    path: Option<PathBuf>,
 
     /// Show detailed information about the torrent
     #[arg(short, long)]
@@ -57,6 +62,10 @@ struct Args {
     #[arg(short, long)]
     sort: bool,
 
+    /// Generate shell completion
+    #[arg(short = 'l', long, name = "SHELL")]
+    completion: Option<Shell>,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -65,16 +74,9 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    if args.no_colour {
-        colored::control::set_override(false);
+    if let Some(ref shell) = args.completion {
+        utils::generate_shell_completion(*shell, Args::command(), true, env!("CARGO_BIN_NAME"))
+    } else {
+        cli::TorrentInfo::new(args)?.run()
     }
-
-    let input_path = utils::resolve_input_path(args.path.as_deref())?;
-    let (root, files) = utils::get_torrent_files(&input_path, args.recursive, args.verbose)?;
-
-    if files.is_empty() {
-        anyhow::bail!("No torrent files found");
-    }
-
-    cli::print_torrent_files(&files, &root, &args)
 }

@@ -1,6 +1,7 @@
 /*
  * torrentinfo, A torrent file parser
  * Copyright (C) 2018  Daniel Müller
+ * Copyright (C) 2025  Akseli Lukkarila (modifications and new features)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -126,7 +127,10 @@ impl Torrent {
 
     #[must_use]
     pub fn num_files(&self) -> usize {
-        self.info.files.as_ref().map_or(1, Vec::len)
+        self.info
+            .files
+            .as_ref()
+            .map_or_else(|| usize::from(self.info.length.is_some()), Vec::len)
     }
 
     /// Get total size of all files in the torrent
@@ -268,10 +272,327 @@ pub fn to_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// Path to the Ubuntu test torrent file
+    const UBUNTU_TORRENT: &str = "tests/ubuntu-24.04.3-desktop-amd64.iso.torrent";
+    /// Expected file size in bytes for the Ubuntu ISO
+    const UBUNTU_SIZE: i64 = 6_345_887_744;
+    /// Expected info hash for the Ubuntu torrent
+    const UBUNTU_INFO_HASH: &str = "d160b8d8ea35a5b4e52837468fc8f03d55cef1f7";
+
+    /// Path to the Pop!_OS test torrent file
+    const POPOS_TORRENT: &str = "tests/pop-os_24.04_amd64_nvidia_22.iso.torrent";
+    /// Expected file size in bytes for the Pop!_OS ISO
+    const POPOS_SIZE: i64 = 3_600_056_320;
+    /// Expected info hash for the Pop!_OS torrent
+    const POPOS_INFO_HASH: &str = "d4d16dbb800d9560f92b3821c84800f7047c186b";
+
     #[test]
-    pub fn test_to_hex() {
+    fn test_to_hex_basic() {
         assert_eq!(to_hex(b"foobar"), "666f6f626172");
+    }
+
+    #[test]
+    fn test_to_hex_binary() {
         assert_eq!(to_hex(&[0xff, 0x00, 0xaa]), "ff00aa");
+    }
+
+    #[test]
+    fn test_to_hex_empty() {
         assert_eq!(to_hex(&[]), "");
+    }
+
+    #[test]
+    fn test_to_hex_single_byte() {
+        assert_eq!(to_hex(&[0x0f]), "0f");
+        assert_eq!(to_hex(&[0xf0]), "f0");
+        assert_eq!(to_hex(&[0x00]), "00");
+        assert_eq!(to_hex(&[0xff]), "ff");
+    }
+
+    #[test]
+    fn test_file_new() {
+        let file = File::new(1024, vec!["path".to_string(), "to".to_string(), "file.txt".to_string()]);
+        assert_eq!(file.length(), 1024);
+        assert_eq!(file.path(), &["path", "to", "file.txt"]);
+    }
+
+    #[test]
+    fn test_file_accessors() {
+        let file = File {
+            length: 2048,
+            path: vec!["test.txt".to_string()],
+            md5sum: Some("abc123".to_string()),
+        };
+        assert_eq!(file.length(), 2048);
+        assert_eq!(file.path(), &["test.txt"]);
+    }
+
+    #[test]
+    fn test_info_default() {
+        let info = Info::default();
+        assert!(info.name().is_none());
+        assert!(info.files.is_none());
+        assert!(info.length.is_none());
+        assert!(info.private().is_none());
+        assert_eq!(*info.piece_length(), 0);
+        assert!(info.pieces().is_empty());
+    }
+
+    #[test]
+    fn test_torrent_default() {
+        let torrent = Torrent::default();
+        assert!(torrent.name().is_none());
+        assert!(torrent.comment().is_none());
+        assert!(torrent.announce().is_none());
+        assert!(torrent.announce_list().is_none());
+        assert!(torrent.created_by().is_none());
+        assert!(torrent.creation_date().is_none());
+        assert!(torrent.encoding().is_none());
+        assert!(torrent.files().is_none());
+        assert_eq!(torrent.num_files(), 0);
+        assert_eq!(torrent.total_size(), 0);
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_from_file() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert!(torrent.name().is_some());
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_name() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert_eq!(torrent.name().as_deref(), Some("ubuntu-24.04.3-desktop-amd64.iso"));
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_comment() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert_eq!(torrent.comment().as_deref(), Some("Ubuntu CD releases.ubuntu.com"));
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_announce() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert_eq!(
+            torrent.announce().as_deref(),
+            Some("https://torrent.ubuntu.com/announce")
+        );
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_created_by() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert_eq!(torrent.created_by().as_deref(), Some("mktorrent 1.1"));
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_creation_date() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert!(torrent.creation_date().is_some());
+        let creation_date = torrent.creation_date().unwrap();
+        assert!(creation_date > 0);
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_num_files() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert_eq!(torrent.num_files(), 1);
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_total_size() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert_eq!(torrent.total_size(), UBUNTU_SIZE);
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_info_hash() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        let info_hash = torrent.info_hash().expect("Failed to calculate info hash");
+        assert_eq!(info_hash.len(), 20, "SHA-1 hash should be 20 bytes");
+
+        let hex_hash = to_hex(&info_hash);
+        assert_eq!(hex_hash.len(), 40, "Hex hash should be 40 characters");
+        assert_eq!(hex_hash, UBUNTU_INFO_HASH);
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_piece_length() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        let piece_length = *torrent.info().piece_length();
+        assert_eq!(piece_length, 262_144, "Ubuntu torrent piece length should be 256 KB");
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_pieces_not_empty() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        assert!(!torrent.info().pieces().is_empty(), "Pieces should not be empty");
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_read_bytes() {
+        let bytes = Torrent::read_bytes(Path::new(UBUNTU_TORRENT)).expect("Failed to read torrent bytes");
+        assert!(!bytes.is_empty(), "Torrent file should not be empty");
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_from_buf() {
+        let bytes = Torrent::read_bytes(Path::new(UBUNTU_TORRENT)).expect("Failed to read torrent bytes");
+        let torrent = Torrent::from_buf(&bytes).expect("Failed to parse torrent from buffer");
+        assert_eq!(torrent.name().as_deref(), Some("ubuntu-24.04.3-desktop-amd64.iso"));
+    }
+
+    // Pop!_OS torrent tests
+
+    #[test]
+    fn test_popos_torrent_from_file() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert!(torrent.name().is_some());
+    }
+
+    #[test]
+    fn test_popos_torrent_name() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert_eq!(torrent.name().as_deref(), Some("pop-os_24.04_amd64_nvidia_22.iso"));
+    }
+
+    #[test]
+    fn test_popos_torrent_comment() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert_eq!(
+            torrent.comment().as_deref(),
+            Some(
+                "Unofficial Pop!_OS (Nvidia - 24.04 - revision 22) torrent created by FOSS Torrents. Published on https://fosstorrents.com/"
+            )
+        );
+    }
+
+    #[test]
+    fn test_popos_torrent_announce() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert_eq!(
+            torrent.announce().as_deref(),
+            Some("udp://fosstorrents.com:6969/announce")
+        );
+    }
+
+    #[test]
+    fn test_popos_torrent_created_by() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert_eq!(
+            torrent.created_by().as_deref(),
+            Some("FOSS Torrents (https://fosstorrents.com/)")
+        );
+    }
+
+    #[test]
+    fn test_popos_torrent_creation_date() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert!(torrent.creation_date().is_some());
+        let creation_date = torrent.creation_date().unwrap();
+        assert!(creation_date > 0);
+    }
+
+    #[test]
+    fn test_popos_torrent_num_files() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert_eq!(torrent.num_files(), 1);
+    }
+
+    #[test]
+    fn test_popos_torrent_total_size() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert_eq!(torrent.total_size(), POPOS_SIZE);
+    }
+
+    #[test]
+    fn test_popos_torrent_info_hash() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        let info_hash = torrent.info_hash().expect("Failed to calculate info hash");
+        assert_eq!(info_hash.len(), 20, "SHA-1 hash should be 20 bytes");
+
+        let hex_hash = to_hex(&info_hash);
+        assert_eq!(hex_hash.len(), 40, "Hex hash should be 40 characters");
+        assert_eq!(hex_hash, POPOS_INFO_HASH);
+    }
+
+    #[test]
+    fn test_popos_torrent_piece_length() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        let piece_length = *torrent.info().piece_length();
+        assert_eq!(piece_length, 1_048_576, "Pop!_OS torrent piece length should be 1 MB");
+    }
+
+    #[test]
+    fn test_popos_torrent_pieces_not_empty() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        assert!(!torrent.info().pieces().is_empty(), "Pieces should not be empty");
+    }
+
+    #[test]
+    fn test_popos_torrent_from_buf() {
+        let bytes = Torrent::read_bytes(Path::new(POPOS_TORRENT)).expect("Failed to read torrent bytes");
+        let torrent = Torrent::from_buf(&bytes).expect("Failed to parse torrent from buffer");
+        assert_eq!(torrent.name().as_deref(), Some("pop-os_24.04_amd64_nvidia_22.iso"));
+    }
+
+    #[test]
+    fn test_torrent_from_nonexistent_file() {
+        let result = Torrent::from_file("nonexistent.torrent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_torrent_from_invalid_buf() {
+        let invalid_data = b"not a valid torrent file";
+        let result = Torrent::from_buf(invalid_data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_torrent_total_size_with_files() {
+        let mut torrent = Torrent::default();
+        torrent.info.files = Some(vec![
+            File::new(1000, vec!["file1.txt".to_string()]),
+            File::new(2000, vec!["file2.txt".to_string()]),
+            File::new(3000, vec!["file3.txt".to_string()]),
+        ]);
+        assert_eq!(torrent.total_size(), 6000);
+    }
+
+    #[test]
+    fn test_torrent_total_size_single_file() {
+        let mut torrent = Torrent::default();
+        torrent.info.length = Some(5000);
+        assert_eq!(torrent.total_size(), 5000);
+    }
+
+    #[test]
+    fn test_torrent_num_files_multiple() {
+        let mut torrent = Torrent::default();
+        torrent.info.files = Some(vec![
+            File::new(100, vec!["a.txt".to_string()]),
+            File::new(200, vec!["b.txt".to_string()]),
+        ]);
+        assert_eq!(torrent.num_files(), 2);
+    }
+
+    #[test]
+    fn test_ubuntu_torrent_announce_list() {
+        let torrent = Torrent::from_file(UBUNTU_TORRENT).expect("Failed to load Ubuntu torrent");
+        // Ubuntu torrent has announce-list with backup trackers
+        if let Some(announce_list) = torrent.announce_list() {
+            assert!(!announce_list.is_empty(), "Announce list should not be empty");
+        }
+    }
+
+    #[test]
+    fn test_popos_torrent_announce_list() {
+        let torrent = Torrent::from_file(POPOS_TORRENT).expect("Failed to load Pop!_OS torrent");
+        // Pop!_OS torrent has announce-list with backup trackers
+        if let Some(announce_list) = torrent.announce_list() {
+            assert!(!announce_list.is_empty(), "Announce list should not be empty");
+        }
     }
 }
