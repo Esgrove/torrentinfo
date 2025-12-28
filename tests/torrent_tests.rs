@@ -366,8 +366,6 @@ fn test_torrent_default() {
     assert!(torrent.creation_date().is_none());
     assert!(torrent.encoding().is_none());
     assert!(torrent.files().is_none());
-    // Default torrent with no files reports 1 file (single-file mode)
-    assert_eq!(torrent.num_files(), 1);
-    // Default torrent has 0 size
+    assert_eq!(torrent.num_files(), 0);
     assert_eq!(torrent.total_size(), 0);
 }

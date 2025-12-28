@@ -127,7 +127,10 @@ impl Torrent {
 
     #[must_use]
     pub fn num_files(&self) -> usize {
-        self.info.files.as_ref().map_or(1, Vec::len)
+        self.info
+            .files
+            .as_ref()
+            .map_or_else(|| usize::from(self.info.length.is_some()), Vec::len)
     }
 
     /// Get total size of all files in the torrent
@@ -346,7 +349,7 @@ mod tests {
         assert!(torrent.creation_date().is_none());
         assert!(torrent.encoding().is_none());
         assert!(torrent.files().is_none());
-        assert_eq!(torrent.num_files(), 1);
+        assert_eq!(torrent.num_files(), 0);
         assert_eq!(torrent.total_size(), 0);
     }
 
