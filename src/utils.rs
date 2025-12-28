@@ -215,7 +215,7 @@ pub fn generate_shell_completion(
 /// then checks for the global directory.
 /// If neither exist, creates and uses the user-specific dir.
 fn get_shell_completion_dir(shell: Shell, name: &str) -> anyhow::Result<PathBuf> {
-    let home = dirs::home_dir().expect("Failed to get home directory");
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Failed to get home directory"))?;
 
     // Special handling for oh-my-zsh.
     // Create custom "plugin", which will then have to be loaded in .zshrc
@@ -237,7 +237,10 @@ fn get_shell_completion_dir(shell: Shell, name: &str) -> anyhow::Result<PathBuf>
             }
         }
         Shell::Bash => home.join(".bash_completion.d"),
-        Shell::Elvish => home.join(".elvish"),
+        Shell::Elvish => {
+            let config_base = dirs::config_dir().unwrap_or_else(|| home.clone());
+            config_base.join("elvish").join("lib")
+        }
         Shell::Fish => home.join(".config/fish/completions"),
         Shell::Zsh => home.join(".zsh/completions"),
         _ => anyhow::bail!("Unsupported shell"),
@@ -265,6 +268,13 @@ fn get_shell_completion_dir(shell: Shell, name: &str) -> anyhow::Result<PathBuf>
         return Ok(global_dir);
     }
 
-    std::fs::create_dir_all(&user_dir)?;
+    std::fs::create_dir_all(&user_dir).with_context(|| {
+        format!(
+            "Failed to create shell completion directory at '{}'. \
+             Please check your filesystem permissions or create this directory manually and \
+             re-run the command.",
+            user_dir.display()
+        )
+    })?;
     Ok(user_dir)
 }
