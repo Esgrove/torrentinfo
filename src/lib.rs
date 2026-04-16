@@ -112,7 +112,7 @@ impl Torrent {
     /// Read torrent file bytes without converting to a `Torrent`
     pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
         let file = StdFile::open(path)?;
-        let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(DEFAULT_BUFFER_SIZE);
+        let file_size = file.metadata().map_or(DEFAULT_BUFFER_SIZE, |m| m.len() as usize);
 
         let mut buf = Vec::with_capacity(file_size);
         let mut reader = std::io::BufReader::new(file);
